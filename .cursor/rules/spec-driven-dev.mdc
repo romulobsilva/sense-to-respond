@@ -1,0 +1,47 @@
+# Sense to Respond - Cursor Rules
+
+You are editing a spec-driven AI/harness project. Follow these rules strictly.
+
+## Read first
+Before code changes, read:
+- docs/architecture.md
+- docs/planning.md
+- rules.md
+- relevant docs/contracts/* if touched
+
+## Core invariants
+- Spec before code.
+- IA = LLM + Harness.
+- LLM never calculates numbers.
+- Python/pandas tools calculate all metrics and financial values.
+- MVP uses sequential pipeline and state blackboard.
+- No free natural-language conversation between agents in MVP.
+- No MOE router, consensus, or Bridge execution unless spec is updated first.
+- Human-in-the-loop is mandatory.
+
+## Change flow
+1. Classify change: fix, refactor, feature, architecture, prompt, security, test, docs.
+2. If architecture/prompt/security/state/tool contract changes: update docs/architecture.md first.
+3. Use next unchecked item in docs/planning.md unless user explicitly requests otherwise.
+4. Implement the smallest safe change.
+5. Add/update tests when behavior changes.
+6. Run at least: python main.py --modo nexus.
+7. Update docs/planning.md only when acceptance criteria pass.
+8. Update docs/agent.log.md at the end.
+
+## Code rules
+- Strict typing for public functions.
+- Avoid Any in new public APIs.
+- No silent exceptions.
+- No real secrets or client data in code, logs, docs, tests.
+- Tools must be deterministic and audited.
+- LLM calls must use structured JSON, validation, retry, and safe fallback.
+
+## Stop and ask
+Ask before:
+- changing state/tool/proposition contracts;
+- adding new decision types;
+- adding autonomous execution;
+- modifying guardrails;
+- removing human review;
+- touching more than 5 code files.

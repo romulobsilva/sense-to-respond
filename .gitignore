@@ -1,0 +1,23 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Saidas locais de execucao
+auditoria/*.json
+
+# Metadados Windows
+*:Zone.Identifier
+
+# Documentos EY (nao versionados - material interno)
+docs/*.pdf
+docs/*.pptx
+docs/*.pptx:Zone.Identifier
+docs/*.pdf:Zone.Identifier
+
+# PNGs gerados localmente (fonte .mmd fica versionada)
+docs/diagrams/*.png

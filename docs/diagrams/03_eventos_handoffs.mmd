@@ -1,0 +1,45 @@
+sequenceDiagram
+    participant U as Usuario
+    participant N as Nexus
+    participant DOM as Dominion
+    participant OPT as Optimus
+    participant VAL as Validador
+    participant C as Critic
+
+    U->>N: pergunta
+    N->>N: input guardrail
+    N->>DOM: executar loop tools
+    DOM->>N: state.resultados
+    Note over N: handoff dominion para sinais
+
+    N->>OPT: ler sinais
+    OPT->>N: state.proposicoes
+    Note over N: handoff sinais para optimus
+
+    N->>VAL: validar proposicoes vs sinais
+    VAL->>N: state.validacao
+    Note over N: handoff optimus para validador
+
+    alt validador falhou e retry disponivel
+        N->>OPT: retry com erros no contexto
+        OPT->>N: state.proposicoes revisadas
+        N->>VAL: revalidar
+        VAL->>N: state.validacao atualizada
+    end
+
+    N->>C: auditar proposicoes vs sinais
+    C->>N: state.critica
+    Note over N: handoff validador para critic
+
+    alt critic falhou e retry disponivel
+        N->>OPT: retry com feedback critic
+        OPT->>N: state.proposicoes revisadas
+        N->>VAL: revalidar
+        VAL->>N: state.validacao atualizada
+        N->>C: reauditar
+        C->>N: state.critica atualizada
+    end
+
+    N->>N: montar fila_nexus
+    N->>N: output guardrail
+    N->>U: resposta + fila para decisao

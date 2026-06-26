@@ -1,0 +1,60 @@
+sequenceDiagram
+    participant U as Usuario
+    participant N as Nexus
+    participant DS as DataShieldLite
+    participant DOM as Dominion
+    participant SIG as Sinais
+    participant OPT as Optimus
+    participant VAL as Validador
+    participant C as Critic
+    participant SB as State
+
+    U->>N: pergunta + arquivo opcional
+    N->>N: input guardrail
+
+    opt arquivo presente
+        N->>DS: processar arquivo
+        DS->>SB: perfil_dados, mapa_semantico, dataset_canonico
+        DS->>N: status_schema
+    end
+
+    alt schema invalido
+        N->>U: solicitar confirmacao ou correcao humana
+    else schema ok ou sem arquivo
+        N->>DOM: executar analise
+        DOM->>SB: ler dados disponiveis
+        DOM->>SB: resultados, capacidades, analises_puladas
+
+        N->>SIG: estruturar sinais
+        SIG->>SB: sinais
+
+        N->>OPT: gerar proposicoes
+        OPT->>SB: proposicoes
+
+        N->>VAL: validar proposicoes contra sinais
+        VAL->>SB: validacao
+
+        alt validacao falhou
+            N->>OPT: retry controlado com erros
+            OPT->>SB: proposicoes revisadas
+            N->>VAL: revalidar
+            VAL->>SB: validacao atualizada
+        else validacao ok
+            N->>C: auditar proposicoes
+            C->>SB: critica
+        end
+
+        alt critic reprovou ou baixa confianca
+            N->>OPT: retry controlado com feedback
+            OPT->>SB: proposicoes revisadas
+            N->>VAL: revalidar
+            VAL->>SB: validacao atualizada
+            N->>C: reauditar
+            C->>SB: critica atualizada
+        else critic ok
+            N->>SB: montar fila_nexus
+        end
+
+        N->>N: output guardrail
+        N->>U: resposta final e fila para revisao humana
+    end

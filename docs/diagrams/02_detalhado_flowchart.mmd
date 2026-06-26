@@ -1,0 +1,70 @@
+flowchart TB
+    START[Usuario<br/>pergunta + arquivo opcional]
+
+    subgraph ENTRADA["Camada de entrada"]
+        IG[Input Guardrail<br/>validacao inicial]
+    end
+
+    subgraph DATASHIELD["DataShield Lite"]
+        DS1[Perfil de dados]
+        DS2[Inferencia semantica controlada]
+        DS3[Validacao do mapa semantico]
+        DS4[Dataset canonico + schema_confirmado]
+        DSG{Schema confirmado?}
+    end
+
+    subgraph STATE["State Blackboard"]
+        SB[(State compartilhado)]
+    end
+
+    subgraph DOMINION["Fase Dominion"]
+        DOM1[Inferir capacidades do dataset]
+        DOM2[Executar apenas analises compativeis]
+        DOM3[Resultados analiticos]
+    end
+
+    subgraph SINAIS["Fase Sinais"]
+        SIG[Extrair sinais estruturados]
+    end
+
+    subgraph OPTIMUS["Fase Optimus"]
+        OPT[Gerar proposicoes candidatas]
+    end
+
+    subgraph VALIDACAO["Camada de validacao e auditoria"]
+        VAL[Validador deterministico]
+        CRIT[Critic read-only]
+        RETRY{Retry controlado permitido?}
+    end
+
+    subgraph SAIDA["Camada de saida"]
+        FILA[Fila Nexus ranqueada]
+        REV[Flag de revisao obrigatoria]
+        OG[Output Guardrail<br/>disclaimer + evidencias + limitacoes]
+        HITL[Human-in-the-loop<br/>usuario decide]
+    end
+
+    START --> IG
+    IG -->|bloqueado| REJ[Encerrar com resposta segura]
+    IG -->|ok| DS1
+
+    DS1 --> DS2 --> DS3 --> DS4 --> DSG
+    DSG -->|nao| HUM[Solicitar confirmacao humana]
+    DSG -->|sim| SB
+
+    SB --> DOM1 --> DOM2 --> DOM3 --> SB
+    SB --> SIG --> SB
+    SB --> OPT --> SB
+    SB --> VAL --> SB
+
+    VAL -->|falhou| RETRY
+    VAL -->|ok| CRIT
+    CRIT --> SB
+
+    CRIT -->|baixa confianca ou reprovado| RETRY
+    CRIT -->|ok| FILA
+
+    RETRY -->|sim| OPT
+    RETRY -->|nao| FILA
+
+    FILA --> REV --> OG --> HITL

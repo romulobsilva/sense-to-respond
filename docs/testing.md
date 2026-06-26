@@ -1,0 +1,805 @@
+# Testing Guide - Sense to Respond
+
+> Guia oficial de testes do projeto.
+> Toda mudanca de comportamento deve ter teste correspondente.
+> Nenhum item deve ser marcado como concluido em `docs/planning.md` sem passar pelos testes minimos aplicaveis.
+
+---
+
+## 1. Principio central
+
+O objetivo dos testes e garantir que o projeto preserve seus invariantes arquiteturais:
+
+```text
+IA = LLM + Harness
+```
+
+Isso significa testar que:
+
+* o LLM nao calcula numeros;
+* tools deterministicas calculam metricas e impactos;
+* o harness controla execucao;
+* guardrails continuam ativos;
+* auditoria continua funcionando;
+* proposicoes possuem evidencias;
+* Critic permanece read-only;
+* human-in-the-loop permanece obrigatorio;
+* o pipeline principal continua executando.
+
+---
+
+## 2. Comandos minimos globais
+
+Antes de considerar qualquer tarefa concluida, rodar:
+
+```bash
+python -m py_compile *.py
+python main.py --modo nexus
+```
+
+Se a mudanca afetar modo legado, rodar tambem:
+
+```bash
+python main.py --modo legado
+```
+
+Se houver diretório de testes automatizados:
+
+```bash
+pytest
+```
+
+Se `pytest` ainda nao estiver configurado, testar os componentes diretamente via Python ou scripts temporarios, sem commitar scripts descartaveis.
+
+---
+
+## 3. Testes obrigatorios por tipo de mudanca
+
+| Tipo de mudanca | Testes obrigatorios                                    |
+| --------------- | ------------------------------------------------------ |
+| `fix`           | Teste do bug corrigido + `python main.py --modo nexus` |
+| `refactor`      | Testes dos componentes afetados + E2E nexus            |
+| `feature`       | Teste unitario + teste de integracao + E2E             |
+| `architecture`  | E2E + verificacao de spec + agent.log                  |
+| `prompt`        | JSON valido + JSON invalido + retry + fallback         |
+| `security`      | Caso permitido + caso bloqueado + auditoria            |
+| `tool`          | Entrada valida + entrada invalida + output + auditoria |
+| `state`         | Criacao, serializacao, conversao e compatibilidade     |
+| `docs`          | Verificar consistencia com architecture/planning/rules |
+| `test`          | Rodar suite completa disponivel                        |
+
+---
+
+## 4. Testes de invariantes
+
+### 4.1 LLM nao calcula numeros
+
+Objetivo:
+
+```text
+Garantir que valores numericos usados em decisoes venham de tools deterministicas.
+```
+
+Testar:
+
+* impactos financeiros sao calculados em Python;
+* desvios percentuais sao calculados em Python;
+* DOI e tendencias, quando existirem, sao calculados por tools;
+* prompts nao pedem ao LLM para calcular;
+* explicacao final apenas cita numeros presentes no contexto.
+
+Falha se:
+
+```text
+O LLM gerar numero novo usado como evidencia ou impacto.
+```
+
+---
+
+### 4.2 Critic read-only
+
+Objetivo:
+
+```text
+Garantir que o Critic apenas audite.
+```
+
+Testar:
+
+* Critic recebe sinais e proposicoes;
+* Critic retorna apenas `aprovado`, `confianca` e `problemas`;
+* Critic nao cria proposicoes;
+* Critic nao altera sinais;
+* Critic nao altera impacto financeiro;
+* falha do Critic nao executa acao operacional.
+
+Falha se:
+
+```text
+A saida do Critic modificar proposicoes ou criar recomendacoes novas.
+```
+
+---
+
+### 4.3 Human-in-the-loop
+
+Objetivo:
+
+```text
+Garantir que nenhuma acao operacional seja executada automaticamente no MVP.
+```
+
+Testar:
+
+* fila Nexus e gerada;
+* itens com baixa confianca exigem revisao;
+* output final contem disclaimer;
+* nenhuma chamada Bridge/ERP/WMS/TMS existe no fluxo MVP;
+* texto final usa linguagem de proposicao, nao de execucao.
+
+Falha se:
+
+```text
+O sistema disser ou registrar que executou uma acao operacional.
+```
+
+---
+
+### 4.4 Evidencias obrigatorias
+
+Objetivo:
+
+```text
+Garantir que proposicoes sejam rastreaveis ate sinais.
+```
+
+Testar:
+
+* toda proposicao possui lista `evidencias`;
+* cada evidencia existe em `sinais`;
+* validator falha se evidencia nao existir;
+* output final inclui citacoes/evidencias;
+* auditoria registra handoff entre sinais e proposicoes.
+
+Falha se:
+
+```text
+Uma proposicao for aprovada sem evidencia existente.
+```
+
+---
+
+### 4.5 Guardrails ativos
+
+Objetivo:
+
+```text
+Garantir que input, harness e output guardrails continuam funcionando.
+```
+
+Testar:
+
+* input curto demais e bloqueado;
+* prompt injection simples e bloqueado;
+* tool fora da whitelist nao executa;
+* tool repetida e bloqueada quando proibida;
+* output final tem disclaimer;
+* baixa confianca gera revisao obrigatoria.
+
+Falha se:
+
+```text
+Entrada maliciosa ou tool nao autorizada passar sem bloqueio.
+```
+
+---
+
+## 5. Testes de guardrails
+
+### 5.1 Input guardrail
+
+Casos minimos:
+
+```text
+Pergunta valida
+Pergunta muito curta
+Pergunta muito longa
+Prompt injection com "ignore previous instructions"
+Prompt injection com "system prompt"
+String vazia
+```
+
+Resultado esperado:
+
+* perguntas validas passam;
+* entradas suspeitas sao bloqueadas antes de qualquer LLM;
+* bloqueio fica registrado nos logs.
+
+---
+
+### 5.2 Harness guardrail
+
+Casos minimos:
+
+```text
+Tool valida
+Tool inexistente
+Tool repetida
+Acao invalida retornada pelo LLM
+Loop atinge max_iteracoes
+Dados vazios e LLM tenta validar antes de carregar
+```
+
+Resultado esperado:
+
+* tool valida executa;
+* tool inexistente nao executa;
+* tool repetida e bloqueada;
+* acao invalida recebe fallback seguro;
+* limite de iteracoes encerra loop;
+* se dados estao vazios, harness corrige para `carregar_dados`.
+
+---
+
+### 5.3 Output guardrail
+
+Casos minimos:
+
+```text
+Critic confianca abaixo do limiar
+Critic confianca acima do limiar
+Validacao deterministica falha
+Proposicao de alto impacto
+Sem proposicoes
+```
+
+Resultado esperado:
+
+* disclaimer obrigatorio sempre presente;
+* baixa confianca gera `[REVISAO OBRIGATORIA]`;
+* validacao falha gera revisao obrigatoria;
+* proposicoes aparecem com evidencias;
+* sem proposicoes nao quebra resposta final.
+
+---
+
+## 6. Testes de prompts
+
+### 6.1 Prompt `dominion.proximo_passo`
+
+Testar com mock ou resposta simulada do LLM:
+
+```text
+JSON valido com acao permitida
+JSON invalido
+JSON com acao desconhecida
+JSON sem justificativa
+JSON com acao nao string
+JSON com justificativa nao string
+Resposta vazia
+Acao `fim` correta
+```
+
+Resultado esperado:
+
+* JSON valido e aceito;
+* JSON invalido dispara retry;
+* acao desconhecida nao executa tool arbitraria;
+* fallback seguro e aplicado depois dos retries;
+* evento e registrado na auditoria.
+
+---
+
+### 6.2 Prompt `critic.auditar`
+
+Testar:
+
+```text
+aprovado=true, confianca valida
+aprovado=false, confianca valida
+aprovado como string
+confianca como string
+confianca menor que 0
+confianca maior que 1
+problemas nao lista
+JSON invalido
+Chaves faltando
+```
+
+Resultado esperado:
+
+* `aprovado` deve ser booleano real;
+* `confianca` deve estar entre 0.0 e 1.0;
+* `problemas` deve ser `list[str]`;
+* JSON invalido dispara retry;
+* falha apos retries retorna aprovado=False e confianca=0.0.
+
+---
+
+### 6.3 Prompt `final.gerar_explicacao`
+
+Testar:
+
+```text
+Resultados com divergencia acima de 10%
+Critic com baixa confianca
+Validacao com erro
+Sem proposicoes
+Proposicoes com evidencias
+```
+
+Resultado esperado:
+
+* texto cita apenas numeros fornecidos;
+* texto nao inventa valores;
+* texto nao afirma execucao;
+* texto menciona cautela quando necessario;
+* output guardrail adiciona disclaimer e evidencias.
+
+---
+
+### 6.4 Prompt futuro `datashield.inferir_mapa_semantico`
+
+Testar com mock:
+
+```text
+Schema claro
+Schema ambiguo
+JSON invalido
+source_column inexistente
+canonical_name invalido
+confidence fora da faixa
+metricas vazias
+warnings nao lista
+```
+
+Resultado esperado:
+
+* schema claro passa;
+* schema ambiguo pede confirmacao humana;
+* JSON invalido dispara retry;
+* colunas inexistentes bloqueiam normalizacao;
+* confidence baixo bloqueia avanco automatico.
+
+---
+
+## 7. Testes de tools
+
+### 7.1 Tool deterministica
+
+Toda tool deterministica deve testar:
+
+```text
+entrada valida
+entrada invalida
+valores nulos
+colunas ausentes
+valores limite
+saida esperada
+sem chamada LLM
+sem mutacao silenciosa do state
+```
+
+Exemplos atuais:
+
+```text
+validar_demanda
+validar_custos
+```
+
+---
+
+### 7.2 Tool de IO
+
+Toda tool de IO deve testar:
+
+```text
+arquivo valido
+arquivo inexistente
+arquivo vazio
+extensao nao suportada
+permissao negada
+saida estruturada
+ausencia de segredo em logs
+```
+
+Exemplos planejados:
+
+```text
+ler_arquivo_csv
+ler_arquivo_xlsx
+salvar_template_mapeamento
+carregar_template_mapeamento
+```
+
+---
+
+### 7.3 Tool com LLM
+
+Toda tool com LLM deve testar com mock:
+
+```text
+JSON valido
+JSON invalido
+chaves faltando
+tipos errados
+faixas invalidas
+retry
+fallback
+payload minimo enviado ao LLM
+```
+
+Exemplo planejado:
+
+```text
+inferir_mapa_semantico
+```
+
+---
+
+## 8. Testes de state
+
+Quando `state_types.py` ou o contrato do state mudar, testar:
+
+```text
+criar_state_inicial
+registrar_handoff
+sinais_do_state
+proposicoes_do_state
+serializar_sinais_para_llm
+serializar_proposicoes_para_llm
+ItemFilaNexus.para_dict
+ResultadoCritica.para_dict
+ResultadoValidacao.para_dict
+```
+
+Resultado esperado:
+
+* state inicial contem todos os campos obrigatorios;
+* handoff e append-only;
+* conversoes aceitam objetos e dicts validos;
+* serializacao nao inclui dados sensiveis;
+* pipeline nexus continua funcionando.
+
+---
+
+## 9. Testes de Optimus
+
+Testar:
+
+```text
+sem sinais
+sinal de demanda abaixo do threshold
+sinal de demanda acima do threshold
+sinal de custo abaixo do threshold
+sinal de custo acima do threshold
+feedback do validador
+feedback do critic
+ordenacao por impacto e urgencia
+```
+
+Resultado esperado:
+
+* sem sinais nao deve gerar proposicoes validas;
+* sinais abaixo do threshold nao geram proposicoes;
+* proposicoes possuem evidencias;
+* impactos sao deterministicos;
+* ordenacao e estavel;
+* feedback aparece sem alterar calculo numerico.
+
+---
+
+## 10. Testes do Validador
+
+Testar proposicoes com:
+
+```text
+tipo fora da whitelist
+evidencia inexistente
+SKU inexistente
+impacto_financeiro diferente de impacto_calculado
+urgencia_horas <= 0
+descricao vazia
+lista vazia de proposicoes
+```
+
+Resultado esperado:
+
+* validator retorna `ok=False`;
+* erros sao claros e estruturados;
+* validator nao chama LLM;
+* validator nao corrige proposicao silenciosamente.
+
+---
+
+## 11. Testes de Nexus
+
+### 11.1 E2E atual com dados simulados
+
+Comando:
+
+```bash
+python main.py --modo nexus
+```
+
+Validar:
+
+```text
+input guardrail OK
+Dominion executa
+sinais extraidos
+Optimus gera proposicoes
+Validador roda
+Critic roda
+Fila Nexus e montada
+Output guardrail aplicado
+Auditoria gerada
+```
+
+---
+
+### 11.2 E2E legado
+
+Comando:
+
+```bash
+python main.py --modo legado
+```
+
+Validar:
+
+```text
+Dominion executa
+explicacao final gerada
+auditoria gerada
+sem Optimus/Critic/Nexus completo
+```
+
+---
+
+### 11.3 E2E futuro com arquivo real
+
+Comando planejado:
+
+```bash
+python main.py --modo nexus --input exemplos/sellout_simples.csv
+```
+
+Validar:
+
+```text
+DataShield le arquivo
+perfil de dados e gerado
+mapa semantico inferido
+schema confirmado
+dataset canonico criado
+Dominion roda sobre dataset canonico
+handoff DataShield -> Dominion registrado
+```
+
+---
+
+## 12. Testes de auditoria
+
+Testar:
+
+```text
+sessao_id gerado
+timestamp presente
+eventos append-only
+eventos serializaveis em JSON
+tool_inicio/tool_fim presentes
+handoffs presentes
+critic_auditoria presente
+fila_nexus presente
+output_guardrail presente
+sessao_fim presente
+```
+
+Validar que auditoria nao contem:
+
+```text
+OPENAI_API_KEY
+conteudo completo de .env
+dataset completo
+dados sensiveis desnecessarios
+payload gigante
+```
+
+---
+
+## 13. Testes de DataShield Lite
+
+Quando DataShield Lite for implementado, testar:
+
+### 13.1 Leitura
+
+```text
+csv com virgula
+csv com ponto e virgula
+xlsx valido
+arquivo inexistente
+arquivo vazio
+extensao nao suportada
+```
+
+### 13.2 Perfil
+
+```text
+tipos inferidos
+nulos por coluna
+percentual de completeness
+valores unicos
+amostra limitada
+```
+
+### 13.3 Inferencia semantica
+
+```text
+coluna temporal clara
+coluna SKU clara
+metricas claras
+colunas ambiguas
+confidence baixa
+source_column inexistente
+```
+
+### 13.4 Confirmacao humana
+
+```text
+usuario confirma
+usuario rejeita
+modo no-interactive com confidence alta
+modo no-interactive com confidence baixa
+```
+
+### 13.5 Normalizacao
+
+```text
+renomeia colunas corretamente
+preserva colunas auxiliares
+bloqueia coluna inexistente
+bloqueia mapa semantico invalido
+```
+
+---
+
+## 14. Testes de seguranca
+
+Testar:
+
+```text
+prompt injection no input
+tentativa de exibir system prompt
+tentativa de executar tool inexistente
+tentativa de ativar Bridge
+tentativa de remover human-in-the-loop
+arquivo com extensao nao suportada
+log sem segredo
+auditoria sem chave de API
+```
+
+Resultado esperado:
+
+* bloqueio seguro;
+* log claro;
+* nenhuma chamada LLM antes do input guardrail;
+* nenhuma execucao operacional.
+
+---
+
+## 15. Testes de regressao
+
+Antes de concluir refatoracoes grandes, comparar:
+
+```text
+acoes_executadas
+numero de sinais
+numero de proposicoes
+validacao.ok
+quantidade de itens na fila
+presenca de disclaimer
+presenca de auditoria
+```
+
+Se mudar comportamento esperado, registrar em:
+
+```text
+docs/architecture.md
+docs/planning.md
+docs/agent.log.md
+```
+
+---
+
+## 16. Estrutura recomendada de testes
+
+Diretorio sugerido:
+
+```text
+tests/
+```
+
+Arquivos sugeridos:
+
+```text
+test_guardrails.py
+test_agent_decision.py
+test_critic.py
+test_tools.py
+test_state_types.py
+test_sinais.py
+test_optimus.py
+test_validator.py
+test_nexus_pipeline.py
+test_datashield_tools.py
+test_datashield_schema.py
+```
+
+---
+
+## 17. Dados de teste
+
+Regras:
+
+* usar apenas dados ficticios;
+* nao incluir dados reais de cliente;
+* nao incluir informacoes pessoais;
+* nao incluir arquivos grandes;
+* manter exemplos pequenos e legiveis.
+
+Diretorio sugerido:
+
+```text
+tests/fixtures/
+```
+
+Exemplos:
+
+```text
+sellout_simples.csv
+sellout_schema_ambiguo.csv
+demanda_custos_basico.csv
+arquivo_vazio.csv
+```
+
+---
+
+## 18. Como registrar testes no agent.log.md
+
+Ao final da sessao, registrar:
+
+```text
+### Testes realizados
+
+- `python -m py_compile *.py`: passou/falhou
+- `python main.py --modo nexus`: passou/falhou
+- `python main.py --modo legado`: passou/falhou/nao aplicavel
+- `pytest`: passou/falhou/nao configurado
+- Testes manuais: listar
+- Limitacoes: listar
+```
+
+Se algum teste nao foi rodado, explicar o motivo.
+
+---
+
+## 19. Regra para falhas
+
+Se teste obrigatorio falhar:
+
+* nao marcar item como `[x]`;
+* nao dizer que a tarefa esta concluida;
+* registrar falha em `docs/agent.log.md`;
+* propor correcao ou rollback;
+* garantir que o usuario saiba o estado real.
+
+---
+
+## 20. Regra final
+
+Se uma mudanca nao pode ser testada, ela nao deve ser considerada concluida.
+
+Se um teste contradiz a arquitetura, a arquitetura deve ser revisada antes do codigo.
+
+Se a arquitetura e o teste estiverem certos, o codigo deve ser corrigido.

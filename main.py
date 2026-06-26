@@ -1,0 +1,157 @@
+"""
+Ponto de entrada: Nexus MVP com validador, critic e fila human-in-the-loop.
+"""
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any, Dict, List
+
+from agent import AgenteOpenAI
+from config import load_settings
+from harness import Harness, TIPOS_RESUMO_AUDITORIA as TIPOS_HARNESS
+from nexus import Nexus, TIPOS_RESUMO_AUDITORIA as TIPOS_NEXUS
+
+
+def _formatar_dados_resumo(dados: Dict[str, Any]) -> str:
+    """
+    Formata payload de evento para exibicao compacta no terminal.
+    """
+    partes: List[str] = []
+    for chave, valor in dados.items():
+        if chave in ("contexto_enviado", "contexto_resultados", "json_bruto"):
+            continue
+        texto = str(valor)
+        if len(texto) > 120:
+            texto = f"{texto[:120]}..."
+        partes.append(f"{chave}={texto}")
+    return ", ".join(partes)
+
+
+def _imprimir_resumo_auditoria(
+    auditoria: Dict[str, Any],
+    tipos: frozenset[str],
+) -> None:
+    """
+    Mostra eventos-chave da trilha de auditoria no terminal.
+    """
+    eventos: List[Dict[str, Any]] = auditoria.get("eventos", [])
+    if not eventos:
+        return
+
+    print("\n==============================")
+    print("RESUMO AUDITORIA (eventos-chave)")
+    print("==============================")
+    print(f"sessao_id: {auditoria.get('sessao_id', '')}")
+
+    for evento in eventos:
+        tipo = evento.get("tipo", "")
+        if tipo not in tipos:
+            continue
+        iteracao = evento.get("iteracao")
+        iter_txt = f"iter={iteracao}" if iteracao is not None else "iter=-"
+        dados = evento.get("dados", {})
+        if not isinstance(dados, dict):
+            dados = {}
+        print(f"[{tipo}] {iter_txt} {_formatar_dados_resumo(dados)}")
+
+
+def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
+    """
+    Exibe fila ranqueada para decisao humana.
+    """
+    if not fila:
+        print("Nenhum item na fila.")
+        return
+
+    print("\n==============================")
+    print("FILA NEXUS (human-in-the-loop)")
+    print("==============================")
+    for item in fila:
+        prop = item.get("proposicao", {})
+        if not isinstance(prop, dict):
+            prop = {}
+        revisao = item.get("revisao_obrigatoria", False)
+        flag = "REVISAO OBRIGATORIA" if revisao else "OK"
+        motivo = item.get("motivo_revisao", "")
+        prop_id = prop.get("proposicao_id", "")
+        titulo = prop.get("titulo", "")
+        impacto = prop.get("impacto_financeiro", 0)
+        print(f"[{flag}] {prop_id} | {titulo} | R$ {impacto}")
+        if motivo:
+            print(f"  motivo: {motivo}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Sense to Respond MVP: Nexus com validador e critic."
+    )
+    parser.add_argument(
+        "--audit-out",
+        default="auditoria/ultima_sessao.json",
+        help="Caminho para salvar JSON da auditoria (vazio para nao salvar).",
+    )
+    parser.add_argument(
+        "--modo",
+        choices=("nexus", "legado"),
+        default="nexus",
+        help="nexus=MVP completo; legado=harness sem Optimus/Critic.",
+    )
+    args = parser.parse_args()
+
+    settings = load_settings()
+    agente = AgenteOpenAI(settings)
+
+    pergunta = (
+        "Compare a demanda modelada com o baseline e compare o custo "
+        "modelado com a DRE."
+    )
+
+    if args.modo == "legado":
+        harness = Harness(agente=agente)
+        resultado = harness.executar(pergunta)
+        tipos_auditoria = TIPOS_HARNESS
+    else:
+        nexus = Nexus(agente=agente, settings=settings)
+        resultado = nexus.executar(pergunta)
+        tipos_auditoria = TIPOS_NEXUS
+
+    if resultado.get("bloqueado"):
+        print(f"\nExecucao bloqueada: {resultado.get('motivo', '')}")
+        for log in resultado.get("logs", []):
+            print(log)
+        return
+
+    auditoria = resultado.get("auditoria", {})
+
+    if args.audit_out and auditoria:
+        caminho = Path(args.audit_out)
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump(auditoria, arquivo, indent=2, ensure_ascii=True)
+        print(f"\nAuditoria salva em: {caminho.resolve()}")
+
+    print("\n==============================")
+    print("LOGS (fluxo passo a passo)")
+    print("==============================")
+    for log in resultado.get("logs", []):
+        print(log)
+
+    if isinstance(auditoria, dict):
+        _imprimir_resumo_auditoria(auditoria, tipos_auditoria)
+
+    fila = resultado.get("fila_nexus", [])
+    if isinstance(fila, list):
+        _imprimir_fila_nexus(fila)
+
+    print("\n==============================")
+    print("RESPOSTA FINAL (com output guardrail)")
+    print("==============================")
+    resultados = resultado.get("resultados", {})
+    if isinstance(resultados, dict):
+        explicacao = resultados.get("explicacao", "")
+        print(explicacao)
+
+
+if __name__ == "__main__":
+    main()
