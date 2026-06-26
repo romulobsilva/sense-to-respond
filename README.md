@@ -87,7 +87,7 @@ sequenceDiagram
     participant U as Usuario
     participant N as Nexus
     participant DOM as Dominion
-    participant OPT as Optimus
+    participant OPTI as Optimus
     participant VAL as Validador
     participant C as Critic
 
@@ -97,8 +97,8 @@ sequenceDiagram
     DOM->>N: state.resultados
     Note over N: handoff dominion para sinais
 
-    N->>OPT: ler sinais
-    OPT->>N: state.proposicoes
+    N->>OPTI: ler sinais
+    OPTI->>N: state.proposicoes
     Note over N: handoff sinais para optimus
 
     N->>VAL: validar proposicoes vs sinais
@@ -106,8 +106,8 @@ sequenceDiagram
     Note over N: handoff optimus para validador
 
     alt validador falhou e retry disponivel
-        N->>OPT: retry com erros no contexto
-        OPT->>N: state.proposicoes revisadas
+        N->>OPTI: retry com erros no contexto
+        OPTI->>N: state.proposicoes revisadas
         N->>VAL: revalidar
         VAL->>N: state.validacao atualizada
     end
@@ -117,8 +117,8 @@ sequenceDiagram
     Note over N: handoff validador para critic
 
     alt critic falhou e retry disponivel
-        N->>OPT: retry com feedback critic
-        OPT->>N: state.proposicoes revisadas
+        N->>OPTI: retry com feedback critic
+        OPTI->>N: state.proposicoes revisadas
         N->>VAL: revalidar
         VAL->>N: state.validacao atualizada
         N->>C: reauditar
@@ -150,7 +150,7 @@ sequenceDiagram
     participant DS as DataShieldLite
     participant DOM as Dominion
     participant SIG as Sinais
-    participant OPT as Optimus
+    participant OPTI as Optimus
     participant VAL as Validador
     participant C as Critic
     participant SB as State
@@ -158,7 +158,8 @@ sequenceDiagram
     U->>N: pergunta + arquivo opcional
     N->>N: input guardrail
 
-    opt arquivo presente
+    rect rgb(240, 248, 255)
+        Note over N,DS: arquivo presente
         N->>DS: processar arquivo
         DS->>SB: perfil_dados, mapa_semantico, dataset_canonico
         DS->>N: status_schema
@@ -174,15 +175,15 @@ sequenceDiagram
         N->>SIG: estruturar sinais
         SIG->>SB: sinais
 
-        N->>OPT: gerar proposicoes
-        OPT->>SB: proposicoes
+        N->>OPTI: gerar proposicoes
+        OPTI->>SB: proposicoes
 
         N->>VAL: validar proposicoes contra sinais
         VAL->>SB: validacao
 
         alt validacao falhou
-            N->>OPT: retry controlado com erros
-            OPT->>SB: proposicoes revisadas
+            N->>OPTI: retry controlado com erros
+            OPTI->>SB: proposicoes revisadas
             N->>VAL: revalidar
             VAL->>SB: validacao atualizada
         else validacao ok
@@ -191,8 +192,8 @@ sequenceDiagram
         end
 
         alt critic reprovou ou baixa confianca
-            N->>OPT: retry controlado com feedback
-            OPT->>SB: proposicoes revisadas
+            N->>OPTI: retry controlado com feedback
+            OPTI->>SB: proposicoes revisadas
             N->>VAL: revalidar
             VAL->>SB: validacao atualizada
             N->>C: reauditar
