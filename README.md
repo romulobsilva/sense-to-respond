@@ -63,28 +63,234 @@ python -m pytest tests/ -v --override-ini="addopts="
 
 ## Arquitetura (MVP)
 
-```text
-Input Guardrail
-  -> Dominion (loop LLM + tools deterministicas)
-  -> Sinais estruturados
-  -> Optimus (proposicoes deterministicas)
-  -> Validador deterministico
-  -> Critic LLM (auditoria read-only)
-  -> Fila Nexus (human-in-the-loop)
-  -> Output Guardrail
-```
-
 Componentes principais:
 
-| Arquivo | Papel |
-|---|---|
-| `nexus.py` | Orquestrador do pipeline |
-| `harness.py` | Loop Dominion (perceive-decide-act) |
-| `optimus.py` | Proposicoes priorizadas |
-| `validator.py` | Validacao formal pos-Optimus |
-| `critic.py` | Auditoria LLM (leitura only) |
-| `guardrails.py` | Input/output guardrails |
-| `state_types.py` | Blackboard compartilhado |
+| Componente | Arquivo | Usa LLM? | Papel |
+|---|---|---|---|
+| **Nexus** | `nexus.py` | Nao | Orquestra a sequencia e governa o fluxo |
+| **Dominion** | `harness.py` | Sim | LLM escolhe a ordem das tools; Python calcula |
+| **Optimus** | `optimus.py` | Nao | Transforma sinais em propostas (deterministico) |
+| **Validador** | `validator.py` | Nao | Checa regras formais (sim/nao) |
+| **Critic** | `critic.py` | Sim | Julga coerencia (LLM leitura-only) |
+| **Guardrails** | `guardrails.py` | Nao | Input/output guardrails |
+| **State** | `state_types.py` | Nao | Blackboard compartilhado entre agentes |
+
+### Fluxo de eventos e handoffs (MVP implementado)
+
+O diagrama abaixo mostra o pipeline implementado no MVP. Cada seta e uma
+chamada real no codigo. Os blocos `Note` marcam handoffs (transicoes de fase
+registradas na auditoria). Os blocos `alt` representam retries controlados
+pelo Nexus quando o Validador ou o Critic encontram problemas.
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant N as Nexus
+    participant DOM as Dominion
+    participant OPT as Optimus
+    participant VAL as Validador
+    participant C as Critic
+
+    U->>N: pergunta
+    N->>N: input guardrail
+    N->>DOM: executar loop tools
+    DOM->>N: state.resultados
+    Note over N: handoff dominion para sinais
+
+    N->>OPT: ler sinais
+    OPT->>N: state.proposicoes
+    Note over N: handoff sinais para optimus
+
+    N->>VAL: validar proposicoes vs sinais
+    VAL->>N: state.validacao
+    Note over N: handoff optimus para validador
+
+    alt validador falhou e retry disponivel
+        N->>OPT: retry com erros no contexto
+        OPT->>N: state.proposicoes revisadas
+        N->>VAL: revalidar
+        VAL->>N: state.validacao atualizada
+    end
+
+    N->>C: auditar proposicoes vs sinais
+    C->>N: state.critica
+    Note over N: handoff validador para critic
+
+    alt critic falhou e retry disponivel
+        N->>OPT: retry com feedback critic
+        OPT->>N: state.proposicoes revisadas
+        N->>VAL: revalidar
+        VAL->>N: state.validacao atualizada
+        N->>C: reauditar
+        C->>N: state.critica atualizada
+    end
+
+    N->>N: montar fila_nexus
+    N->>N: output guardrail
+    N->>U: resposta + fila para decisao
+```
+
+**Principios do fluxo:**
+
+- **Nenhum componente se autoaprova.** Optimus propoe, Validador contesta regras formais, Critic contesta coerencia, Nexus arbitra, humano decide.
+- **Handoff** = passagem formal de artefato via state, registrada na auditoria para rastreabilidade.
+- **Retry controlado:** se Validador ou Critic falhar, Nexus envia os erros como feedback ao Optimus, que regenera propostas. Limite configuravel via `MAX_OPTIMUS_RETRIES`.
+- **LLM nunca calcula numeros.** Todos os impactos financeiros e desvios sao calculados por Python/pandas.
+
+### Visao macro com DataShield (MVP + fase futura)
+
+O diagrama abaixo inclui o DataShield Lite (fase 1.5, planejado) que fara
+inferencia semantica de arquivos xlsx/csv antes do Dominion. O restante do
+pipeline e o mesmo do MVP.
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant N as Nexus
+    participant DS as DataShieldLite
+    participant DOM as Dominion
+    participant SIG as Sinais
+    participant OPT as Optimus
+    participant VAL as Validador
+    participant C as Critic
+    participant SB as State
+
+    U->>N: pergunta + arquivo opcional
+    N->>N: input guardrail
+
+    opt arquivo presente
+        N->>DS: processar arquivo
+        DS->>SB: perfil_dados, mapa_semantico, dataset_canonico
+        DS->>N: status_schema
+    end
+
+    alt schema invalido
+        N->>U: solicitar confirmacao ou correcao humana
+    else schema ok ou sem arquivo
+        N->>DOM: executar analise
+        DOM->>SB: ler dados disponiveis
+        DOM->>SB: resultados, capacidades, analises_puladas
+
+        N->>SIG: estruturar sinais
+        SIG->>SB: sinais
+
+        N->>OPT: gerar proposicoes
+        OPT->>SB: proposicoes
+
+        N->>VAL: validar proposicoes contra sinais
+        VAL->>SB: validacao
+
+        alt validacao falhou
+            N->>OPT: retry controlado com erros
+            OPT->>SB: proposicoes revisadas
+            N->>VAL: revalidar
+            VAL->>SB: validacao atualizada
+        else validacao ok
+            N->>C: auditar proposicoes
+            C->>SB: critica
+        end
+
+        alt critic reprovou ou baixa confianca
+            N->>OPT: retry controlado com feedback
+            OPT->>SB: proposicoes revisadas
+            N->>VAL: revalidar
+            VAL->>SB: validacao atualizada
+            N->>C: reauditar
+            C->>SB: critica atualizada
+        else critic ok
+            N->>SB: montar fila_nexus
+        end
+
+        N->>N: output guardrail
+        N->>U: resposta final e fila para revisao humana
+    end
+```
+
+### Pipeline detalhado (flowchart)
+
+Visao por camadas: entrada, DataShield, state blackboard, Dominion, Sinais,
+Optimus, validacao/auditoria e saida com human-in-the-loop.
+
+```mermaid
+flowchart TB
+    START[Usuario<br/>pergunta + arquivo opcional]
+
+    subgraph ENTRADA["Camada de entrada"]
+        IG[Input Guardrail<br/>validacao inicial]
+    end
+
+    subgraph DATASHIELD["DataShield Lite"]
+        DS1[Perfil de dados]
+        DS2[Inferencia semantica controlada]
+        DS3[Validacao do mapa semantico]
+        DS4[Dataset canonico + schema_confirmado]
+        DSG{Schema confirmado?}
+    end
+
+    subgraph STATE["State Blackboard"]
+        SB[(State compartilhado)]
+    end
+
+    subgraph DOMINION["Fase Dominion"]
+        DOM1[Inferir capacidades do dataset]
+        DOM2[Executar apenas analises compativeis]
+        DOM3[Resultados analiticos]
+    end
+
+    subgraph SINAIS["Fase Sinais"]
+        SIG[Extrair sinais estruturados]
+    end
+
+    subgraph OPTIMUS["Fase Optimus"]
+        OPT[Gerar proposicoes candidatas]
+    end
+
+    subgraph VALIDACAO["Camada de validacao e auditoria"]
+        VAL[Validador deterministico]
+        CRIT[Critic read-only]
+        RETRY{Retry controlado permitido?}
+    end
+
+    subgraph SAIDA["Camada de saida"]
+        FILA[Fila Nexus ranqueada]
+        REV[Flag de revisao obrigatoria]
+        OG[Output Guardrail<br/>disclaimer + evidencias + limitacoes]
+        HITL[Human-in-the-loop<br/>usuario decide]
+    end
+
+    START --> IG
+    IG -->|bloqueado| REJ[Encerrar com resposta segura]
+    IG -->|ok| DS1
+
+    DS1 --> DS2 --> DS3 --> DS4 --> DSG
+    DSG -->|nao| HUM[Solicitar confirmacao humana]
+    DSG -->|sim| SB
+
+    SB --> DOM1 --> DOM2 --> DOM3 --> SB
+    SB --> SIG --> SB
+    SB --> OPT --> SB
+    SB --> VAL --> SB
+
+    VAL -->|falhou| RETRY
+    VAL -->|ok| CRIT
+    CRIT --> SB
+
+    CRIT -->|baixa confianca ou reprovado| RETRY
+    CRIT -->|ok| FILA
+
+    RETRY -->|sim| OPT
+    RETRY -->|nao| FILA
+
+    FILA --> REV --> OG --> HITL
+```
+
+**Guardrails (3 camadas):**
+
+| Camada | Quando roda | O que faz |
+|---|---|---|
+| **Input** | Antes de qualquer LLM/tool | Bloqueia pergunta curta, longa ou com injection |
+| **Harness** | Durante execucao | Whitelist de tools, max iteracoes, JSON validado com retry |
+| **Output** | Antes de devolver ao usuario | Disclaimer obrigatorio, citacoes, flag de revisao |
 
 ## Documentacao
 
