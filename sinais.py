@@ -17,13 +17,16 @@ Severidade segue thresholds do S&OE Analyst Questions Script:
   - DOI: gap >15 dias alta, >7 dias media, resto baixa
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import pandas as pd
 
 from state_types import Sinal
 
+if TYPE_CHECKING:
+    from config import DomainThresholds
 
+# Defaults Mondelez -- usados quando thresholds nao e fornecido (ADR-0024)
 LIMIAR_SEVERIDADE_ALTA = 10.0
 LIMIAR_SEVERIDADE_MEDIA = 5.0
 
@@ -31,44 +34,68 @@ LIMIAR_DOI_SEVERIDADE_ALTA = 15.0
 LIMIAR_DOI_SEVERIDADE_MEDIA = 7.0
 
 
-def _classificar_severidade(desvio_pct: float) -> str:
+def _classificar_severidade(
+    desvio_pct: float,
+    limiar_alta: float = LIMIAR_SEVERIDADE_ALTA,
+    limiar_media: float = LIMIAR_SEVERIDADE_MEDIA,
+) -> str:
     """
     Classifica severidade com base no desvio percentual absoluto.
 
-    Thresholds: >= 10% alta, >= 5% media, < 5% baixa.
+    Thresholds configuraveis (ADR-0024).
     """
     abs_desvio = abs(desvio_pct)
-    if abs_desvio >= LIMIAR_SEVERIDADE_ALTA:
+    if abs_desvio >= limiar_alta:
         return "alta"
-    if abs_desvio >= LIMIAR_SEVERIDADE_MEDIA:
+    if abs_desvio >= limiar_media:
         return "media"
     return "baixa"
 
 
-def _classificar_severidade_doi(gap_dias: float) -> str:
+def _classificar_severidade_doi(
+    gap_dias: float,
+    limiar_alta: float = LIMIAR_DOI_SEVERIDADE_ALTA,
+    limiar_media: float = LIMIAR_DOI_SEVERIDADE_MEDIA,
+) -> str:
     """
     Classifica severidade de DOI com base no gap em dias absoluto.
 
-    Thresholds: >= 15 dias alta, >= 7 dias media, < 7 dias baixa.
+    Thresholds configuraveis (ADR-0024).
     """
     abs_gap = abs(gap_dias)
-    if abs_gap >= LIMIAR_DOI_SEVERIDADE_ALTA:
+    if abs_gap >= limiar_alta:
         return "alta"
-    if abs_gap >= LIMIAR_DOI_SEVERIDADE_MEDIA:
+    if abs_gap >= limiar_media:
         return "media"
     return "baixa"
 
 
-def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
+def extrair_sinais_de_resultados(
+    resultados: Dict[str, Any],
+    thresholds: Optional["DomainThresholds"] = None,
+) -> List[Sinal]:
     """
     Converte resultados deterministicos do Dominion em sinais estruturados.
 
     Suporta tanto resultados legados (comparacao_demanda, comparacao_custos)
     quanto resultados das tools parametrizadas Mondelez (analise_sellout,
     analise_sellin, analise_doi).
+
+    ``thresholds`` permite configurar limiares de severidade por
+    dominio (ADR-0024).
     """
     sinais: List[Sinal] = []
     contador = 0
+
+    _sev_alta = LIMIAR_SEVERIDADE_ALTA
+    _sev_media = LIMIAR_SEVERIDADE_MEDIA
+    _doi_alta = LIMIAR_DOI_SEVERIDADE_ALTA
+    _doi_media = LIMIAR_DOI_SEVERIDADE_MEDIA
+    if thresholds is not None:
+        _sev_alta = thresholds.limiar_desvio_severo_pct
+        _sev_media = thresholds.limiar_desvio_pct
+        _doi_alta = thresholds.limiar_doi_gap_alta
+        _doi_media = thresholds.limiar_doi_gap_media
 
     if "comparacao_demanda" in resultados:
         df = resultados["comparacao_demanda"]
@@ -89,7 +116,7 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                     valor=demanda_modelada,
                     referencia=demanda_real,
                     desvio_pct=desvio_pct,
-                    severidade=_classificar_severidade(desvio_pct),
+                    severidade=_classificar_severidade(desvio_pct, _sev_alta, _sev_media),
                 ))
 
     if "comparacao_custos" in resultados:
@@ -108,7 +135,7 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                 valor=custo_modelado,
                 referencia=custo_dre,
                 desvio_pct=desvio_pct,
-                severidade=_classificar_severidade(desvio_pct),
+                severidade=_classificar_severidade(desvio_pct, _sev_alta, _sev_media),
             ))
 
     if "analise_sellout" in resultados:
@@ -130,10 +157,11 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         valor=float(d.get("actual_ton", 0)),
                         referencia=float(d.get("plan_ton", 0)),
                         desvio_pct=desvio_pct,
-                        severidade=_classificar_severidade(desvio_pct),
+                        severidade=_classificar_severidade(desvio_pct, _sev_alta, _sev_media),
                         pais=str(d.get("pais", "")),
                         categoria=str(d.get("categoria", "")),
                         marca=str(d.get("marca", "")),
+                        nr_impacto=float(d.get("nr_impacto", 0) or 0),
                     ))
 
     if "analise_sellin" in resultados:
@@ -155,10 +183,11 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         valor=float(d.get("actual_ton", 0)),
                         referencia=float(d.get("plan_ton", 0)),
                         desvio_pct=desvio_pct,
-                        severidade=_classificar_severidade(desvio_pct),
+                        severidade=_classificar_severidade(desvio_pct, _sev_alta, _sev_media),
                         pais=str(d.get("pais", "")),
                         categoria=str(d.get("categoria", "")),
                         marca=str(d.get("marca", "")),
+                        nr_impacto=float(d.get("nr_impacto", 0) or 0),
                     ))
 
     if "analise_doi" in resultados:
@@ -187,10 +216,11 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         valor=doi_actual,
                         referencia=doi_plan,
                         desvio_pct=desvio_pct,
-                        severidade=_classificar_severidade_doi(gap_dias),
+                        severidade=_classificar_severidade_doi(gap_dias, _doi_alta, _doi_media),
                         pais=str(d.get("pais", "")),
                         categoria=str(d.get("categoria", "")),
                         marca=str(d.get("marca", "")),
+                        nr_impacto=float(d.get("nr_impacto", 0) or 0),
                     ))
 
     if "analise_tendencia" in resultados:
@@ -219,7 +249,7 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         valor=doi_rec,
                         referencia=doi_ant,
                         desvio_pct=desvio_pct,
-                        severidade=_classificar_severidade(so_var),
+                        severidade=_classificar_severidade(so_var, _sev_alta, _sev_media),
                         pais=str(t.get("pais", "")),
                         categoria=str(t.get("categoria", "")),
                         marca=str(t.get("marca", "")),

@@ -327,3 +327,45 @@ Fase 2/3:
 ### Proximos passos definidos
 - Lista
 ```
+
+---
+
+## Sessao 2026-07-08 - Portabilidade multi-dominio (ADR-0024)
+
+### Objetivo
+Implementar 4 mudancas de portabilidade para eliminar acoplamentos ao dominio
+Mondelez e permitir reutilizacao do pipeline com outros clientes/setores.
+
+### Decisoes tomadas
+- ADR-0024 criado para documentar as 4 mudancas
+- Ordem de implementacao: B2 (NR impacto) -> B1 (thresholds) -> B4 (forward) -> B3 (schema)
+- Todos os defaults preservam comportamento Mondelez existente
+
+### Artefatos criados/alterados
+| Arquivo | Descricao |
+|---|---|
+| `docs/adr/0024-portabilidade-multi-dominio.md` | ADR novo |
+| `docs/architecture.md` | Secoes 6.2, 7 (config), 10 (ADRs), 12 (schema) |
+| `docs/planning.md` | Nova Fase 1.9 Portabilidade |
+| `docs/contracts/state_contract.md` | Campos nr_impacto e novos tipos |
+| `docs/contracts/tool_contract.md` | Assinatura com thresholds |
+| `docs/testing.md` | Secao 13c testes de portabilidade |
+| `config.py` | DomainThresholds + schema_path + _load_thresholds |
+| `state_types.py` | Campo nr_impacto no Sinal |
+| `sinais.py` | Propagar nr_impacto + severidade parametrizavel |
+| `optimus.py` | Usar nr_impacto real + thresholds parametrizaveis |
+| `tools_parametrizadas.py` | thresholds param + _is_forward_mask + _is_actual_mask |
+| `datashield.py` | carregar_schema_de_json + schema parametrizavel |
+| `nexus.py` | Propagar thresholds e schema para todos componentes |
+| `tests/test_pipeline_e2e.py` | Atualizar _settings_teste com thresholds |
+
+### Testes realizados
+- `python -m py_compile *.py`: OK (7 arquivos)
+- `pytest tests/test_state_types.py tests/test_optimus.py tests/test_guardrails.py tests/test_validator.py tests/test_critic.py`: 78 passed
+- Testes inline portabilidade: DomainThresholds defaults OK, severidade parametrizada OK, nr_impacto real OK, nr_impacto fallback OK, thresholds alteram proposicoes OK, forward_marker nan/zero OK, schema JSON carregavel OK
+- Limitacao: testes que dependem de pd.read_csv falham por bug ambiente numpy/pandas (pre-existente, nao introduzido)
+
+### Proximos passos definidos
+- Corrigir incompatibilidade numpy/pandas do ambiente (pip install --upgrade numpy pandas)
+- Commit e push das mudancas
+- Testar com dados reais apos fix do ambiente

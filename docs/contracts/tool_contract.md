@@ -305,19 +305,24 @@ analisar_tendencia
 analisar_aceleracao_canal
 ```
 
-Assinatura parametrizada (ADR-0019):
+Assinatura parametrizada (ADR-0019, ADR-0024):
 
 ```python
-def analisar_sellout(df: pd.DataFrame, mapa: dict) -> dict:
+def analisar_sellout(
+    df: pd.DataFrame,
+    mapa: dict,
+    thresholds: DomainThresholds | None = None,
+) -> dict:
     ...
 
 def detectar_capacidades(mapa: dict) -> list[str]:
     ...
 ```
 
-As tools parametrizadas recebem `df` e `mapa` como argumentos em vez de
-assumir nomes fixos de colunas. Isso permite reutilizar a mesma tool
-para datasets com nomes de colunas diferentes.
+As tools parametrizadas recebem `df`, `mapa` e opcionalmente `thresholds`
+como argumentos. `thresholds` contem limiares de dominio configuraveis
+(DOI, desvio, janela temporal, marcador forward) -- ADR-0024.
+Se `thresholds` nao for fornecido, usa defaults Mondelez.
 
 Responsabilidade:
 

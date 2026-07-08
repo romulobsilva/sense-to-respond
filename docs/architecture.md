@@ -162,8 +162,13 @@ Sem conversa livre entre LLMs.
 - `ajustar_plano_sellin`
 - `rebalancear_estoque_doi`
 - `investigar_desvio_canal`
+- `questionar_premissa_plano`
+- `capturar_oportunidade`
+- `investigar_desvio_persistente`
 
 ## 7. Configuracao (.env)
+
+### 7.1 Variaveis principais
 
 | Variavel | Padrao | Descricao |
 |---|---|---|
@@ -173,6 +178,37 @@ Sem conversa livre entre LLMs.
 | `MAX_OPTIMUS_RETRIES` | `1` | Retries do Optimus (0 a 3) |
 | `HITL_MODE` | `terminal` | Interface HITL: `terminal`, `arquivo`, `streamlit`, `auto` |
 | `STREAMLIT_PORT` | `8501` | Porta do Streamlit quando HITL_MODE=streamlit |
+
+### 7.2 Thresholds de dominio (ADR-0024)
+
+Configuraveis por cliente/setor. Defaults calibrados para Mondelez FMCG.
+
+| Variavel | Padrao | Descricao |
+|---|---|---|
+| `DOI_RUPTURA_DIAS` | `15.0` | DOI abaixo disso: risco de ruptura |
+| `DOI_OVERSTOCK_DIAS` | `40.0` | DOI acima disso: risco de overstock |
+| `LIMIAR_DESVIO_PCT` | `5.0` | Desvio% minimo para gerar proposicao |
+| `LIMIAR_DESVIO_SEVERO_PCT` | `10.0` | Desvio% para severidade alta |
+| `LIMIAR_DOI_GAP_MEDIA` | `7.0` | Gap DOI para severidade media |
+| `LIMIAR_DOI_GAP_ALTA` | `15.0` | Gap DOI para severidade alta |
+| `LIMIAR_TENDENCIA_ESTAVEL_PCT` | `3.0` | Variacao% abaixo disso: estavel |
+| `LIMIAR_PREMISSA_FURADA_PCT` | `15.0` | Divergencia% forward para alerta |
+| `LIMIAR_ACELERACAO_PCT` | `5.0` | Variacao pp entre semanas para ritmo |
+| `LIMIAR_DESVIO_PERSISTENTE_MESES` | `3` | Meses minimos para desvio persistente |
+| `JANELA_RECENTE_DIAS` | `30` | Tamanho da janela temporal recente |
+| `FORWARD_MARKER` | `nan` | Marcador de dados forward: `nan`, `zero` |
+| `SCHEMA_PATH` | - | Caminho para JSON de schema alternativo |
+
+### 7.3 Portabilidade multi-dominio (ADR-0024)
+
+O pipeline e **parametrico nos dados mas rigido no dominio** por default.
+Para novo cliente/setor, ajustar:
+
+1. `DomainThresholds` via `.env` (thresholds de DOI, desvio, janela temporal).
+2. Schema canonico via `SCHEMA_PATH` (JSON com colunas esperadas).
+3. `FORWARD_MARKER` se dados forward usam zero ao inves de NaN.
+
+Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 
 ## 8. O que NAO esta implementado
 
@@ -226,12 +262,13 @@ Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0023). Resumo:
 | 0021 | LLM pode gerar ETL mas nao metrica | Fronteira ETL vs calculo de negocio |
 | 0022 | HITL via protocolo abstrato com Streamlit | InterfaceHITL plugavel, demo EY |
 | 0023 | Comunicacao pipeline-UI via JSON | Arquivos JSON em approvals/ |
+| 0024 | Portabilidade multi-dominio | Thresholds, NR, schema, forward configuraveis |
 
 ## 11. Documentos de referencia
 
 | Documento | Caminho | Descricao |
 |---|---|---|
-| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0018) |
+| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0024) |
 | Contratos | `docs/contracts/` | state_contract.md, tool_contract.md |
 | Prompts | `docs/prompts.md` | Contratos de prompts LLM |
 | Testes | `docs/testing.md` | Guia de testes e invariantes |
@@ -263,6 +300,10 @@ Colunas esperadas no dataset canonico apos DataShield normalizar o CSV:
 | `sellout_actual_nr` | float | Net Revenue real (USD) |
 
 Dimensoes para agregacao: `country`, `channel`, `category`, `brand`.
+
+O schema e configuravel via `SCHEMA_PATH` no `.env` (ADR-0024).
+Se `SCHEMA_PATH` nao for definido, o default Mondelez acima e utilizado.
+O JSON de schema deve conter uma lista de objetos com `campo`, `tipo` e `descricao`.
 
 ## 13. Arquitetura HITL (ADR-0022, ADR-0023)
 

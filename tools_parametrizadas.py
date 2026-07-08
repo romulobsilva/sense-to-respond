@@ -17,10 +17,13 @@ Agregacao (ADR-0019):
 Ref: ADR-0019, docs/S&OE - Analyst Questions Script.xlsx
 """
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from config import DomainThresholds
 
 DIRECAO_MELHORANDO = "melhorando"
 DIRECAO_PIORANDO = "piorando"
@@ -29,16 +32,29 @@ DIRECAO_ESTAVEL = "estavel"
 RISCO_RUPTURA = "ruptura"
 RISCO_OVERSTOCK = "overstock"
 RISCO_GAP_PLANO = "gap_plano"
+RISCO_OPORTUNIDADE = "oportunidade"
 
+# Defaults Mondelez -- usados quando thresholds nao e fornecido (ADR-0024)
 LIMIAR_TENDENCIA_ESTAVEL_PCT = 3.0
 LIMIAR_PREMISSA_FURADA_PCT = 15.0
 DOI_RUPTURA_DIAS = 15.0
 DOI_OVERSTOCK_DIAS = 40.0
-
-RISCO_OPORTUNIDADE = "oportunidade"
-
 LIMIAR_ACELERACAO_PCT = 5.0
 LIMIAR_DESVIO_PERSISTENTE_MESES = 3
+
+
+def _th_val(thresholds: Optional["DomainThresholds"], attr: str, default: float) -> float:
+    """Resolve atributo de thresholds com fallback para default."""
+    if thresholds is not None:
+        return float(getattr(thresholds, attr, default))
+    return default
+
+
+def _th_int(thresholds: Optional["DomainThresholds"], attr: str, default: int) -> int:
+    """Resolve atributo inteiro de thresholds com fallback."""
+    if thresholds is not None:
+        return int(getattr(thresholds, attr, default))
+    return default
 
 
 CAPACIDADE_SELLOUT = "sellout"
@@ -653,26 +669,57 @@ def resumir_por_categoria(
     return {"resumo_categorias": resumos, "totais": totais}
 
 
+def _is_forward_mask(
+    series: pd.Series,
+    forward_marker: str = "nan",
+) -> pd.Series:
+    """
+    Gera mascara booleana indicando linhas forward (ADR-0024).
+
+    ``forward_marker`` controla como dados forward sao marcados:
+      - "nan": forward = valor e NaN (default Mondelez)
+      - "zero": forward = valor e 0 ou NaN
+    """
+    mask_na = series.isna()
+    if forward_marker == "zero":
+        return mask_na | (series == 0)
+    return mask_na
+
+
+def _is_actual_mask(
+    series: pd.Series,
+    forward_marker: str = "nan",
+) -> pd.Series:
+    """Inverso de _is_forward_mask: linhas com dados realizados."""
+    return ~_is_forward_mask(series, forward_marker)
+
+
 def _data_corte_efetiva(
     df: pd.DataFrame,
     col_date: str,
     col_actual: str,
     data_corte: Optional[str],
+    forward_marker: str = "nan",
 ) -> pd.Timestamp:
     """
     Determina a data de corte entre dados realizados e forward.
 
-    Se data_corte nao for fornecida, usa a ultima data onde actual nao e NaN.
+    Se data_corte nao for fornecida, usa a ultima data onde actual
+    nao e forward (conforme forward_marker, ADR-0024).
     """
     if data_corte is not None:
         return pd.Timestamp(data_corte)
-    real = df[df[col_actual].notna()]
+    real = df[_is_actual_mask(df[col_actual], forward_marker)]
     if real.empty:
         return pd.Timestamp(df[col_date].max())
     return pd.Timestamp(real[col_date].max())
 
 
-def _classificar_direcao_doi(doi_recente: float, doi_anterior: float) -> str:
+def _classificar_direcao_doi(
+    doi_recente: float,
+    doi_anterior: float,
+    limiar_estavel: float = LIMIAR_TENDENCIA_ESTAVEL_PCT,
+) -> str:
     """
     Classifica direcao da tendencia de DOI.
 
@@ -682,9 +729,9 @@ def _classificar_direcao_doi(doi_recente: float, doi_anterior: float) -> str:
     if doi_anterior <= 0:
         return DIRECAO_ESTAVEL
     delta_pct = ((doi_recente - doi_anterior) / doi_anterior) * 100.0
-    if delta_pct < -LIMIAR_TENDENCIA_ESTAVEL_PCT:
+    if delta_pct < -limiar_estavel:
         return DIRECAO_MELHORANDO
-    if delta_pct > LIMIAR_TENDENCIA_ESTAVEL_PCT:
+    if delta_pct > limiar_estavel:
         return DIRECAO_PIORANDO
     return DIRECAO_ESTAVEL
 
@@ -722,6 +769,7 @@ def analisar_tendencia(
     mapa: Dict[str, str],
     janela_recente_dias: int = 30,
     data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Analise de tendencia temporal: compara periodo recente vs anterior.
@@ -751,9 +799,12 @@ def analisar_tendencia(
     work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
     work = work.dropna(subset=[col_date])
 
-    corte = _data_corte_efetiva(work, col_date, col_so_actual, data_corte)
+    _fwd_marker = "nan"
+    if thresholds is not None:
+        _fwd_marker = thresholds.forward_marker
+    corte = _data_corte_efetiva(work, col_date, col_so_actual, data_corte, _fwd_marker)
 
-    realizados = work[work[col_so_actual].notna()].copy()
+    realizados = work[_is_actual_mask(work[col_so_actual], _fwd_marker)].copy()
     if realizados.empty:
         return {"tendencias": [], "resumo": {"total_skus": 0}}
 
@@ -834,7 +885,8 @@ def analisar_tendencia(
         else:
             so_desvio_recente = 0.0
 
-        direcao_doi = _classificar_direcao_doi(doi_recente, doi_anterior)
+        _limiar_estavel = _th_val(thresholds, "limiar_tendencia_estavel_pct", LIMIAR_TENDENCIA_ESTAVEL_PCT)
+        direcao_doi = _classificar_direcao_doi(doi_recente, doi_anterior, _limiar_estavel)
 
         if so_anterior > 0:
             so_variacao = round(
@@ -856,14 +908,15 @@ def analisar_tendencia(
         desvios_sem = filtro_sem["_desvio_sem_pct"].values
         so_aceleracao = 0.0
         so_ritmo = "estavel"
+        _limiar_acel = _th_val(thresholds, "limiar_aceleracao_pct", LIMIAR_ACELERACAO_PCT)
         if len(desvios_sem) >= 4:
             metade = len(desvios_sem) // 2
             media_recente_sem = float(np.mean(desvios_sem[metade:]))
             media_anterior_sem = float(np.mean(desvios_sem[:metade]))
             so_aceleracao = round(media_recente_sem - media_anterior_sem, 2)
-            if so_aceleracao > LIMIAR_ACELERACAO_PCT:
+            if so_aceleracao > _limiar_acel:
                 so_ritmo = "acelerando"
-            elif so_aceleracao < -LIMIAR_ACELERACAO_PCT:
+            elif so_aceleracao < -_limiar_acel:
                 so_ritmo = "desacelerando"
 
         t: Dict[str, Any] = {
@@ -919,6 +972,7 @@ def analisar_forward(
     mapa: Dict[str, str],
     janela_recente_dias: int = 30,
     data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Analise forward: cruza tendencia recente com plano futuro.
@@ -950,26 +1004,29 @@ def analisar_forward(
     work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
     work = work.dropna(subset=[col_date])
 
+    _fwd_marker = "nan"
+    if thresholds is not None:
+        _fwd_marker = thresholds.forward_marker
+
     corte = _data_corte_efetiva(
         work, col_date,
         col_so_actual if col_so_actual is not None else col_so_plan,
         data_corte,
+        _fwd_marker,
     )
     corte_recente_inicio = corte - pd.Timedelta(days=janela_recente_dias)
 
-    # Dados realizados recentes (janela)
     if col_so_actual is not None:
         realizados = work[
-            (work[col_so_actual].notna())
+            _is_actual_mask(work[col_so_actual], _fwd_marker)
             & (work[col_date] > corte_recente_inicio)
             & (work[col_date] <= corte)
         ]
     else:
         realizados = pd.DataFrame()
 
-    # Dados forward (plan-only, apos a data de corte)
     if col_so_actual is not None:
-        forward = work[work[col_so_actual].isna() & (work[col_date] > corte)]
+        forward = work[_is_forward_mask(work[col_so_actual], _fwd_marker) & (work[col_date] > corte)]
     else:
         forward = work[work[col_date] > corte]
 
@@ -1017,7 +1074,7 @@ def analisar_forward(
     # Obter ultimo DOI realizado por grupo (snapshot mais recente)
     doi_snapshot: Dict[tuple, float] = {}
     if col_doi_actual is not None and col_doi_actual in work.columns:
-        real_all = work[work[col_doi_actual].notna()]
+        real_all = work[_is_actual_mask(work[col_doi_actual], _fwd_marker)]
         if not real_all.empty:
             idx_max = real_all.groupby(dim_cols)[col_date].idxmax()
             for idx_val in idx_max:
@@ -1063,29 +1120,29 @@ def analisar_forward(
         else:
             divergencia_forward_pct = 0.0
 
-        premissa_coerente = abs(divergencia_forward_pct) <= LIMIAR_PREMISSA_FURADA_PCT
+        _limiar_furada = _th_val(thresholds, "limiar_premissa_furada_pct", LIMIAR_PREMISSA_FURADA_PCT)
+        _doi_rupt = _th_val(thresholds, "doi_ruptura_dias", DOI_RUPTURA_DIAS)
+        _doi_over = _th_val(thresholds, "doi_overstock_dias", DOI_OVERSTOCK_DIAS)
+        _limiar_desvio = _th_val(thresholds, "limiar_desvio_pct", 5.0)
 
-        # DOI: snapshot atual vs plano forward
+        premissa_coerente = abs(divergencia_forward_pct) <= _limiar_furada
+
         doi_atual = doi_snapshot.get(chave_vals, 0.0)
         doi_plan_fwd = float(row_fwd.get(col_doi_plan, 0) or 0) if col_doi_plan else 0.0
 
-        # SI forward
         si_plan_fwd = float(row_fwd.get(col_si_plan, 0) or 0) if col_si_plan else 0.0
         si_actual_recente = float(row_real.get(col_si_actual, 0) or 0) if col_si_actual else 0.0
 
-        # Classificar risco projetado
-        # SO acima do plano + DOI baixo + plano subdimensionado = OPORTUNIDADE
-        # SO acima do plano + DOI baixo + plano nao cobre = RUPTURA se plano nao sobe
         risco = ""
-        so_acima_plano = so_tendencia_pct > 5.0
-        plano_subdimensionado = divergencia_forward_pct < -LIMIAR_PREMISSA_FURADA_PCT
+        so_acima_plano = so_tendencia_pct > _limiar_desvio
+        plano_subdimensionado = divergencia_forward_pct < -_limiar_furada
 
-        if doi_atual > 0 and doi_atual < DOI_RUPTURA_DIAS and so_acima_plano:
+        if doi_atual > 0 and doi_atual < _doi_rupt and so_acima_plano:
             if plano_subdimensionado:
                 risco = RISCO_OPORTUNIDADE
             else:
                 risco = RISCO_RUPTURA
-        elif doi_atual > DOI_OVERSTOCK_DIAS:
+        elif doi_atual > _doi_over:
             risco = RISCO_OVERSTOCK
         if not premissa_coerente and not risco:
             risco = RISCO_GAP_PLANO
@@ -1142,7 +1199,8 @@ def analisar_forward(
 def analisar_desvio_persistente(
     df: pd.DataFrame,
     mapa: Dict[str, str],
-    min_meses: int = LIMIAR_DESVIO_PERSISTENTE_MESES,
+    min_meses: Optional[int] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Detecta SKUs com desvio de SO no mesmo sinal por N meses consecutivos.
@@ -1156,11 +1214,15 @@ def analisar_desvio_persistente(
         df: DataFrame com dados (canonico ou original).
         mapa: dicionario {col_original: col_canonica}.
         min_meses: minimo de meses consecutivos para considerar
-            desvio como persistente.
+            desvio como persistente. Se None, usa thresholds ou default.
+        thresholds: thresholds de dominio (ADR-0024).
 
     Returns:
         Dict com "persistentes" (lista por SKU/Pais/Canal) e "resumo".
     """
+    if min_meses is None:
+        min_meses = _th_int(thresholds, "limiar_desvio_persistente_meses", LIMIAR_DESVIO_PERSISTENTE_MESES)
+
     col_date = _col(df, mapa, "Date")
     col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
     col_so_plan = _col(df, mapa, "SellOut_Plan_Ton")

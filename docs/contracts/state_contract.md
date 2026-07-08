@@ -189,6 +189,20 @@ desvio_sellin
 doi_fora_politica
 estoque_acima_cobertura
 tendencia_sellout
+tendencia_temporal
+premissa_forward_furada
+forward_oportunidade
+desvio_persistente
+```
+
+Campos para portabilidade (ADR-0024):
+
+```text
+nr_impacto           -- Net Revenue real (USD) calculado pela tool
+so_ritmo             -- desacelerando / acelerando / estavel
+so_aceleracao_pct    -- variacao percentual do ritmo SO
+meses_desvio_persistente   -- meses consecutivos com mesmo sinal de desvio
+media_desvio_persistente_pct  -- media do desvio nesses meses
 ```
 
 Regras:
@@ -226,6 +240,9 @@ ajustar_plano_sellout
 ajustar_plano_sellin
 rebalancear_estoque_doi
 investigar_desvio_canal
+questionar_premissa_plano
+capturar_oportunidade
+investigar_desvio_persistente
 ```
 
 Regras:

@@ -789,6 +789,42 @@ test_hitl_streamlit.py (integracao)
 
 ---
 
+## 13c. Testes de portabilidade (ADR-0024)
+
+### 13c.1 DomainThresholds
+
+```text
+Defaults Mondelez preservam comportamento existente
+Thresholds alterados mudam classificacao de severidade
+DOI_RUPTURA_DIAS=5 classifica DOI 10 como overstock (pereciveis)
+```
+
+### 13c.2 NR impacto real
+
+```text
+Sinal com nr_impacto > 0 priorizado por NR, nao toneladas
+Sinal com nr_impacto == 0 usa fallback de toneladas
+Priorizacao muda com NR real vs toneladas
+```
+
+### 13c.3 Forward marker
+
+```text
+FORWARD_MARKER=nan detecta NaN como forward (default)
+FORWARD_MARKER=zero detecta zeros como forward
+Dados actuais nao sao classificados como forward
+```
+
+### 13c.4 Schema configuravel
+
+```text
+Schema padrao Mondelez funciona sem SCHEMA_PATH
+Schema alternativo carregado de JSON funciona
+Schema com campos faltantes gera diagnostico
+```
+
+---
+
 ## 14. Testes de seguranca
 
 Testar:

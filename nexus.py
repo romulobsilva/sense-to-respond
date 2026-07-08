@@ -14,6 +14,7 @@ from config import Settings
 from critic import CriticAgent
 from datashield import (
     MapaSemResult,
+    carregar_schema_de_json,
     normalizar_dataset,
     processar_arquivo,
 )
@@ -127,8 +128,16 @@ class Nexus:
 
         self._log(f"DataShield: processando '{self.arquivo_entrada}'...")
 
+        schema_externo = None
+        if self.settings.schema_path:
+            try:
+                schema_externo = carregar_schema_de_json(self.settings.schema_path)
+                self._log(f"DataShield: schema externo carregado de '{self.settings.schema_path}'")
+            except (FileNotFoundError, ValueError) as exc:
+                self._log(f"DataShield: erro ao carregar schema: {exc}, usando default")
+
         try:
-            resultado_ds = processar_arquivo(self.arquivo_entrada)
+            resultado_ds = processar_arquivo(self.arquivo_entrada, schema_canonico=schema_externo)
         except (FileNotFoundError, ValueError) as exc:
             self._log(f"DataShield: erro ao processar arquivo: {exc}")
             if auditoria is not None:
@@ -287,7 +296,7 @@ class Nexus:
         n_cats = len(resumo_cat.get("resumo_categorias", []))
         self._log(f"Resumo Nivel 3: {n_cats} categoria(s) x pais x canal")
 
-        res_tend = analisar_tendencia(df, mapa)
+        res_tend = analisar_tendencia(df, mapa, thresholds=self.settings.thresholds)
         resultados["analise_tendencia"] = res_tend
         n_tend = len(res_tend.get("tendencias", []))
         self._log(
@@ -296,7 +305,7 @@ class Nexus:
             f"melhorando={res_tend.get('resumo', {}).get('doi_melhorando', 0)}"
         )
 
-        res_fwd = analisar_forward(df, mapa)
+        res_fwd = analisar_forward(df, mapa, thresholds=self.settings.thresholds)
         resultados["analise_forward"] = res_fwd
         n_alertas = len(res_fwd.get("alertas_forward", []))
         resumo_fwd = res_fwd.get("resumo", {})
@@ -308,7 +317,7 @@ class Nexus:
             f"oportunidades={resumo_fwd.get('oportunidades', 0)}"
         )
 
-        res_pers = analisar_desvio_persistente(df, mapa)
+        res_pers = analisar_desvio_persistente(df, mapa, thresholds=self.settings.thresholds)
         resultados["analise_desvio_persistente"] = res_pers
         n_pers = res_pers.get("resumo", {}).get("total", 0)
         self._log(
@@ -545,6 +554,7 @@ class Nexus:
                 sinais,
                 feedback_validacao=feedback_validacao,
                 feedback_critic=feedback_critic,
+                thresholds=self.settings.thresholds,
             )
             state["proposicoes"] = proposicoes_para_state(proposicoes)
             registrar_handoff(state, "dominion", "optimus", ["sinais", "proposicoes"])
@@ -691,7 +701,7 @@ class Nexus:
             if isinstance(auditoria_raw, dict):
                 auditoria = self.harness.auditoria
 
-        sinais = extrair_sinais_de_resultados(state["resultados"])
+        sinais = extrair_sinais_de_resultados(state["resultados"], thresholds=self.settings.thresholds)
         state["sinais"] = [s.para_dict() for s in sinais]
         self._log(f"Sinais extraidos: {len(sinais)}")
         registrar_handoff(state, "dominion", "state", ["sinais"])

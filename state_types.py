@@ -43,6 +43,7 @@ class Sinal:
     tendencia: str = ""
     semanas_consecutivas: int = 0
     risco_forward: str = ""
+    nr_impacto: float = 0.0
     so_ritmo: str = ""
     so_aceleracao_pct: float = 0.0
     meses_desvio_persistente: int = 0

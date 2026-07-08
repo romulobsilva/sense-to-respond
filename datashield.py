@@ -14,6 +14,7 @@ Contrato: datashield escreve no state os campos
 Refs: ADR-0019, ADR-0020
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -65,12 +66,56 @@ SCHEMA_CANONICO_MONDELEZ: Dict[str, Dict[str, str]] = {
 }
 
 
-def _todas_colunas_canonicas() -> List[str]:
+def _todas_colunas_canonicas(
+    schema: Optional[Dict[str, Dict[str, str]]] = None,
+) -> List[str]:
     """Retorna lista flat de todas as colunas do schema canonico."""
+    if schema is None:
+        schema = SCHEMA_CANONICO_MONDELEZ
     colunas: List[str] = []
-    for grupo in SCHEMA_CANONICO_MONDELEZ.values():
+    for grupo in schema.values():
         colunas.extend(grupo.keys())
     return colunas
+
+
+def carregar_schema_de_json(caminho: str) -> Dict[str, Dict[str, str]]:
+    """
+    Carrega schema canonico de um arquivo JSON externo (ADR-0024).
+
+    O JSON deve ter a mesma estrutura do SCHEMA_CANONICO_MONDELEZ:
+    dicionario de grupos, cada grupo com {coluna: descricao}.
+
+    Args:
+        caminho: caminho do arquivo JSON.
+
+    Returns:
+        Schema canonico como Dict[str, Dict[str, str]].
+
+    Raises:
+        FileNotFoundError: se o arquivo nao existe.
+        ValueError: se o formato e invalido.
+    """
+    path = Path(caminho)
+    if not path.exists():
+        raise FileNotFoundError(f"Schema JSON nao encontrado: {caminho}")
+
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"Schema JSON deve ser um dicionario de grupos, "
+            f"recebido: {type(raw).__name__}"
+        )
+
+    for grupo_nome, grupo_val in raw.items():
+        if not isinstance(grupo_val, dict):
+            raise ValueError(
+                f"Grupo '{grupo_nome}' deve ser dicionario "
+                f"{{coluna: descricao}}, recebido: {type(grupo_val).__name__}"
+            )
+
+    return raw
 
 
 @dataclass

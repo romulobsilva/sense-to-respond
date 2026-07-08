@@ -357,6 +357,39 @@ Em `sinais.py`:
 
 ---
 
+## Fase 1.9 - Portabilidade multi-dominio (ADR-0024)
+
+Remover acoplamentos ao dominio Mondelez para reutilizacao com outros clientes.
+
+### 1.9.1 Propagar nr_impacto real (B2)
+- [ ] Adicionar campo `nr_impacto: float = 0.0` ao `Sinal` em `state_types.py`
+- [ ] `sinais.py`: preencher `nr_impacto` a partir do resultado da tool
+- [ ] `optimus.py`: usar `sinal.nr_impacto` quando > 0 para priorizacao
+- [ ] Teste: priorizacao muda quando NR real difere de toneladas
+
+### 1.9.2 Externalizar thresholds (B1)
+- [ ] Criar `DomainThresholds` dataclass em `config.py`
+- [ ] Ler de variaveis `.env` com defaults Mondelez
+- [ ] `tools_parametrizadas.py`: receber `thresholds` como parametro
+- [ ] `sinais.py`: receber `thresholds` para calcular severidade
+- [ ] `optimus.py`: receber `thresholds` para limiares de proposicao
+- [ ] `nexus.py`: propagar `settings.thresholds` para todos os componentes
+- [ ] Teste: com thresholds alterados, classificacao muda
+
+### 1.9.3 Generalizar deteccao de forward (B4)
+- [ ] Adicionar `forward_marker: str` a `DomainThresholds` (default "nan")
+- [ ] Criar funcao `_is_forward()` em `tools_parametrizadas.py`
+- [ ] Substituir `.isna()` hardcoded por `_is_forward()`
+- [ ] Teste: dados forward com zero sao detectados corretamente
+
+### 1.9.4 Schema canonico configuravel (B3)
+- [ ] Adicionar `schema_path: Optional[str]` a `Settings`
+- [ ] `datashield.py`: carregar schema de JSON quando `schema_path` definido
+- [ ] Default: `SCHEMA_CANONICO_MONDELEZ` existente
+- [ ] Teste: schema alternativo carregado e usado
+
+---
+
 ## Fase 1.7 - Optimus expandido
 
 5 tipos de decisao completos da apresentacao EY (slide 17).
@@ -435,6 +468,7 @@ Multi-fonte, qualidade e reconciliacao.
 | 1.5b | Pipeline roda com CSV Mondelez real (tools parametrizadas) |
 | 1.5c | Demo EY funciona com Streamlit (upload, mapeamento, fila, audit) |
 | 1.6 | Dominion detecta DOI, canal, tendencia |
+| 1.9 | Thresholds, NR, schema e forward configuraveis por cliente |
 | 1.7 | Optimus gera 5 tipos de proposicao EY |
 | 2 | Multi-fonte com qualidade e reconciliacao |
 

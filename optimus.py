@@ -27,9 +27,12 @@ Enriquecimento de causa-raiz (DOI overstock):
 Impacto financeiro: sempre deterministico, nunca calculado por LLM.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from state_types import Proposicao, Sinal, TIPOS_DECISAO_MVP
+
+if TYPE_CHECKING:
+    from config import DomainThresholds
 
 
 VALOR_UNITARIO_ESTIMADO = 62.0
@@ -56,12 +59,17 @@ def _estimar_impacto_custo(sinal: Sinal) -> float:
 
 def _estimar_impacto_nr(sinal: Sinal) -> float:
     """
-    Estima impacto financeiro via NR: abs(desvio_pct/100) * valor.
+    Estima impacto financeiro usando NR real propagado pela tool.
 
-    Para sinais de sellout/sellin, o campo valor contem actual_ton
-    e precisamos do nr_impacto que ja veio calculado na tool.
-    Aqui usamos a formula generica como fallback.
+    Prioriza ``sinal.nr_impacto`` (NR real em USD, calculado pela tool
+    parametrizada). Se nao disponivel (== 0), aplica fallback generico:
+    abs(desvio_pct/100) * abs(valor_ton).
+
+    ADR-0024: propagar NR real elimina distorcao de priorizacao onde
+    SKU barato com alto volume aparecia antes de caro com pouco volume.
     """
+    if sinal.nr_impacto > 0:
+        return round(sinal.nr_impacto, 2)
     return round(abs(sinal.desvio_pct / 100.0) * abs(sinal.valor), 2)
 
 
@@ -108,19 +116,27 @@ def gerar_proposicoes(
     sinais: List[Sinal],
     feedback_validacao: Optional[List[str]] = None,
     feedback_critic: Optional[List[str]] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> List[Proposicao]:
     """
     Gera proposicoes deterministicas a partir dos sinais.
 
     Feedback de validador/critic e registrado na descricao para retry.
+    ``thresholds`` permite configurar limiares por dominio (ADR-0024).
     """
     proposicoes: List[Proposicao] = []
     contador = 0
     tendencia_idx = _build_tendencia_index(sinais)
 
+    _limiar_desvio = LIMIAR_DESVIO_PCT
+    _limiar_doi_gap = LIMIAR_DOI_GAP_DIAS
+    if thresholds is not None:
+        _limiar_desvio = thresholds.limiar_desvio_pct
+        _limiar_doi_gap = thresholds.limiar_doi_gap_media
+
     for sinal in sinais:
 
-        if sinal.tipo == "desvio_demanda" and abs(sinal.desvio_pct) >= LIMIAR_DESVIO_PCT:
+        if sinal.tipo == "desvio_demanda" and abs(sinal.desvio_pct) >= _limiar_desvio:
             contador += 1
             impacto = _estimar_impacto_demanda(sinal)
             tipo = "ajustar_demanda"
@@ -143,7 +159,7 @@ def gerar_proposicoes(
                 evidencias=[sinal.sinal_id],
             ))
 
-        if sinal.tipo == "desvio_custo" and abs(sinal.desvio_pct) >= LIMIAR_DESVIO_PCT:
+        if sinal.tipo == "desvio_custo" and abs(sinal.desvio_pct) >= _limiar_desvio:
             contador += 1
             impacto = _estimar_impacto_custo(sinal)
             tipo = "ajustar_custo"
@@ -164,7 +180,7 @@ def gerar_proposicoes(
                 evidencias=[sinal.sinal_id],
             ))
 
-        if sinal.tipo == "desvio_sellout" and abs(sinal.desvio_pct) >= LIMIAR_DESVIO_PCT:
+        if sinal.tipo == "desvio_sellout" and abs(sinal.desvio_pct) >= _limiar_desvio:
             contador += 1
             impacto = _estimar_impacto_nr(sinal)
             tipo = "ajustar_plano_sellout"
@@ -187,7 +203,7 @@ def gerar_proposicoes(
                 evidencias=[sinal.sinal_id],
             ))
 
-        if sinal.tipo == "desvio_sellin" and abs(sinal.desvio_pct) >= LIMIAR_DESVIO_PCT:
+        if sinal.tipo == "desvio_sellin" and abs(sinal.desvio_pct) >= _limiar_desvio:
             contador += 1
             impacto = _estimar_impacto_nr(sinal)
             tipo = "ajustar_plano_sellin"
@@ -212,7 +228,7 @@ def gerar_proposicoes(
 
         if sinal.tipo == "doi_fora_politica":
             gap_dias = sinal.valor - sinal.referencia
-            if abs(gap_dias) >= LIMIAR_DOI_GAP_DIAS:
+            if abs(gap_dias) >= _limiar_doi_gap:
                 chave_tend = f"{sinal.sku}|{sinal.pais}|{sinal.canal}"
                 tend = tendencia_idx.get(chave_tend)
                 if tend is not None and tend.tendencia == "melhorando" and gap_dias > 0:
