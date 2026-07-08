@@ -10,7 +10,13 @@ Tipos de proposicao suportados:
     - ajustar_plano_sellout: desvio sell-out >= 5%
     - ajustar_plano_sellin: desvio sell-in >= 5%
     - rebalancear_estoque_doi: DOI fora da politica (gap >= 7 dias)
+    - questionar_premissa_plano: plano forward diverge da tendencia recente
     - investigar_desvio_canal: SI e SO divergem no mesmo SKU (futuro)
+
+Detector de falso-positivo (DOI):
+  Se um sinal doi_fora_politica tem tendencia "melhorando" (campo via
+  analise_tendencia), a proposicao de rebalancear e suprimida para evitar
+  alertas sobre DOI que ja esta normalizando.
 
 Impacto financeiro: sempre deterministico, nunca calculado por LLM.
 """
@@ -75,6 +81,23 @@ def _dim_label(sinal: Sinal) -> str:
     return ""
 
 
+def _build_tendencia_index(
+    sinais: List[Sinal],
+) -> Dict[str, Sinal]:
+    """
+    Constroi indice de sinais de tendencia por chave (sku, pais, canal).
+
+    Permite consulta rapida ao avaliar se um sinal DOI deve ser suprimido
+    como falso-positivo.
+    """
+    idx: Dict[str, Sinal] = {}
+    for s in sinais:
+        if s.tipo == "tendencia_temporal":
+            chave = f"{s.sku}|{s.pais}|{s.canal}"
+            idx[chave] = s
+    return idx
+
+
 def gerar_proposicoes(
     sinais: List[Sinal],
     feedback_validacao: Optional[List[str]] = None,
@@ -87,6 +110,7 @@ def gerar_proposicoes(
     """
     proposicoes: List[Proposicao] = []
     contador = 0
+    tendencia_idx = _build_tendencia_index(sinais)
 
     for sinal in sinais:
 
@@ -183,14 +207,21 @@ def gerar_proposicoes(
         if sinal.tipo == "doi_fora_politica":
             gap_dias = sinal.valor - sinal.referencia
             if abs(gap_dias) >= LIMIAR_DOI_GAP_DIAS:
+                chave_tend = f"{sinal.sku}|{sinal.pais}|{sinal.canal}"
+                tend = tendencia_idx.get(chave_tend)
+                if tend is not None and tend.tendencia == "melhorando" and gap_dias > 0:
+                    continue
                 contador += 1
                 impacto = _estimar_impacto_nr(sinal)
                 tipo = "rebalancear_estoque_doi"
                 dims = _dim_label(sinal)
                 if gap_dias > 0:
-                    acao = "Reduzir sell-in ou acelerar sell-out para drenar estoque."
+                    if tend is not None and tend.tendencia == "piorando":
+                        acao = "SEGURAR sell-in imediatamente; DOI piorando."
+                    else:
+                        acao = "Reduzir sell-in ou acelerar sell-out para drenar estoque."
                 else:
-                    acao = "Aumentar sell-in para evitar ruptura de estoque."
+                    acao = "AUMENTAR sell-in para evitar ruptura de estoque."
                 descricao = (
                     f"SKU {sinal.sku}{dims}: DOI actual "
                     f"{sinal.valor:.0f}d vs target {sinal.referencia:.0f}d "
@@ -207,6 +238,44 @@ def gerar_proposicoes(
                     skus=[sinal.sku],
                     evidencias=[sinal.sinal_id],
                 ))
+
+        if sinal.tipo == "premissa_forward_furada":
+            contador += 1
+            impacto = _estimar_impacto_nr(sinal)
+            tipo = "questionar_premissa_plano"
+            dims = _dim_label(sinal)
+            risco = sinal.risco_forward
+            if risco == "ruptura":
+                acao = (
+                    "RISCO DE RUPTURA: DOI baixo e SO acima do plano, "
+                    "mas plano forward nao aumenta SI. Subir SI/producao."
+                )
+            elif risco == "overstock":
+                acao = (
+                    "RISCO DE OVERSTOCK: DOI alto e plano forward "
+                    "ainda preve SI elevado. Segurar sell-in."
+                )
+            else:
+                acao = (
+                    "PREMISSA FURADA: plano forward diverge da tendencia "
+                    f"recente em {sinal.desvio_pct:+.1f}%. Revisar premissas."
+                )
+            descricao = (
+                f"SKU {sinal.sku}{dims}: DOI atual "
+                f"{sinal.valor:.0f}d (plan forward {sinal.referencia:.0f}d). "
+                f"{acao}"
+            )
+            proposicoes.append(Proposicao(
+                proposicao_id=f"P{contador}",
+                tipo=tipo,
+                titulo=f"Questionar premissa plano - {sinal.sku}{dims}",
+                descricao=descricao,
+                impacto_financeiro=impacto,
+                impacto_calculado=impacto,
+                urgencia_horas=_urgencia_de_severidade(sinal.severidade),
+                skus=[sinal.sku],
+                evidencias=[sinal.sinal_id],
+            ))
 
     if feedback_validacao:
         for prop in proposicoes:

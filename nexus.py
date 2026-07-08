@@ -40,8 +40,10 @@ from state_types import (
 from tools import serializar_resultados_para_llm
 from tools_parametrizadas import (
     analisar_doi,
+    analisar_forward,
     analisar_sellin,
     analisar_sellout,
+    analisar_tendencia,
     detectar_capacidades,
     resumir_por_categoria,
 )
@@ -284,10 +286,30 @@ class Nexus:
         n_cats = len(resumo_cat.get("resumo_categorias", []))
         self._log(f"Resumo Nivel 3: {n_cats} categoria(s) x pais x canal")
 
+        res_tend = analisar_tendencia(df, mapa)
+        resultados["analise_tendencia"] = res_tend
+        n_tend = len(res_tend.get("tendencias", []))
+        self._log(
+            f"Tendencia: {n_tend} SKU(s), "
+            f"piorando={res_tend.get('resumo', {}).get('doi_piorando', 0)}, "
+            f"melhorando={res_tend.get('resumo', {}).get('doi_melhorando', 0)}"
+        )
+
+        res_fwd = analisar_forward(df, mapa)
+        resultados["analise_forward"] = res_fwd
+        n_alertas = len(res_fwd.get("alertas_forward", []))
+        resumo_fwd = res_fwd.get("resumo", {})
+        self._log(
+            f"Forward: {n_alertas} alerta(s), "
+            f"rupturas={resumo_fwd.get('rupturas_projetadas', 0)}, "
+            f"overstocks={resumo_fwd.get('overstocks_projetados', 0)}, "
+            f"gaps_plano={resumo_fwd.get('gaps_plano', 0)}"
+        )
+
         state["resultados"] = resultados
         state["acoes_executadas"] = [
             f"analisar_{cap}" for cap in caps
-        ]
+        ] + ["analisar_tendencia", "analisar_forward"]
 
         if auditoria is not None:
             auditoria.registrar(
@@ -382,6 +404,60 @@ class Nexus:
                     f"{key}: {r.get('total_registros', 0)} grupos agregados, "
                     f"impacto total NR=${r.get('total_nr_impacto', 0):,.0f}"
                 )
+
+        # Alertas forward
+        fwd = resumo.get("analise_forward", {})
+        if isinstance(fwd, dict):
+            alertas_fwd = fwd.get("alertas_forward", [])
+            if alertas_fwd:
+                linhas.append("")
+                linhas.append(
+                    f"=== ALERTAS FORWARD ({len(alertas_fwd)} SKUs com risco) ==="
+                )
+                for a in alertas_fwd:
+                    if not isinstance(a, dict):
+                        continue
+                    risco = a.get("risco_projetado", "")
+                    sku = a.get("sku", "?")
+                    pais = a.get("pais", "?")
+                    canal = a.get("canal", "?")
+                    doi = a.get("doi_atual", 0)
+                    div = a.get("divergencia_forward_pct", 0)
+                    linhas.append(
+                        f"- {sku} ({pais}, {canal}): "
+                        f"RISCO={risco.upper()} | DOI_atual={doi:.0f}d | "
+                        f"divergencia_plano={div:+.1f}%"
+                    )
+
+        # Tendencias DOI
+        tend = resumo.get("analise_tendencia", {})
+        if isinstance(tend, dict):
+            tendencias = tend.get("tendencias", [])
+            piorando = [
+                t for t in tendencias
+                if isinstance(t, dict) and t.get("direcao_doi") == "piorando"
+            ]
+            melhorando = [
+                t for t in tendencias
+                if isinstance(t, dict) and t.get("direcao_doi") == "melhorando"
+            ]
+            if piorando or melhorando:
+                linhas.append("")
+                linhas.append("=== TENDENCIA DOI ===")
+                for t in piorando:
+                    linhas.append(
+                        f"- {t.get('sku', '?')} ({t.get('pais', '?')}, "
+                        f"{t.get('canal', '?')}): DOI PIORANDO "
+                        f"{t.get('doi_anterior', 0):.0f}d -> "
+                        f"{t.get('doi_recente', 0):.0f}d"
+                    )
+                for t in melhorando:
+                    linhas.append(
+                        f"- {t.get('sku', '?')} ({t.get('pais', '?')}, "
+                        f"{t.get('canal', '?')}): DOI melhorando "
+                        f"{t.get('doi_anterior', 0):.0f}d -> "
+                        f"{t.get('doi_recente', 0):.0f}d"
+                    )
 
         n_sinais = len(state.get("sinais", []))
         n_props = len(state.get("proposicoes", []))

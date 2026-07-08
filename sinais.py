@@ -7,6 +7,8 @@ Tipos de sinal suportados:
   - desvio_sellout: SO actual vs plan (dados Mondelez, ADR-0019)
   - desvio_sellin: SI actual vs plan (dados Mondelez, ADR-0019)
   - doi_fora_politica: DOI actual vs target (dados Mondelez, ADR-0019)
+  - tendencia_temporal: direcao DOI + SO recente vs anterior
+  - premissa_forward_furada: plano futuro diverge da tendencia recente
 
 Severidade segue thresholds do S&OE Analyst Questions Script:
   - SO/SI: >10% alta, >5% media, resto baixa
@@ -187,6 +189,73 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         pais=str(d.get("pais", "")),
                         categoria=str(d.get("categoria", "")),
                         marca=str(d.get("marca", "")),
+                    ))
+
+    if "analise_tendencia" in resultados:
+        analise = resultados["analise_tendencia"]
+        if isinstance(analise, dict):
+            tendencias = analise.get("tendencias", [])
+            if isinstance(tendencias, list):
+                for t in tendencias:
+                    if not isinstance(t, dict):
+                        continue
+                    direcao = str(t.get("direcao_doi", ""))
+                    doi_rec = float(t.get("doi_recente", 0))
+                    doi_ant = float(t.get("doi_anterior", 0))
+                    so_var = float(t.get("so_variacao_pct", 0))
+                    sem_consec = int(t.get("semanas_consecutivas", 0))
+                    desvio_pct = float(t.get("so_desvio_recente_pct", 0))
+                    contador += 1
+                    sinais.append(Sinal(
+                        sinal_id=f"SIG-TEND-{contador:03d}",
+                        tipo="tendencia_temporal",
+                        sku=str(t.get("sku", "")),
+                        canal=str(t.get("canal", "")),
+                        metrica="tendencia_doi_so",
+                        valor=doi_rec,
+                        referencia=doi_ant,
+                        desvio_pct=desvio_pct,
+                        severidade=_classificar_severidade(so_var),
+                        pais=str(t.get("pais", "")),
+                        categoria=str(t.get("categoria", "")),
+                        marca=str(t.get("marca", "")),
+                        tendencia=direcao,
+                        semanas_consecutivas=sem_consec,
+                    ))
+
+    if "analise_forward" in resultados:
+        analise = resultados["analise_forward"]
+        if isinstance(analise, dict):
+            alertas = analise.get("alertas_forward", [])
+            if isinstance(alertas, list):
+                for a in alertas:
+                    if not isinstance(a, dict):
+                        continue
+                    risco = str(a.get("risco_projetado", ""))
+                    div_pct = float(a.get("divergencia_forward_pct", 0))
+                    doi_atual = float(a.get("doi_atual", 0))
+                    doi_plan_fwd = float(a.get("doi_plan_forward", 0))
+                    if risco == "ruptura":
+                        sev = "alta"
+                    elif risco == "overstock":
+                        sev = "alta"
+                    else:
+                        sev = "media"
+                    contador += 1
+                    sinais.append(Sinal(
+                        sinal_id=f"SIG-FWD-{contador:03d}",
+                        tipo="premissa_forward_furada",
+                        sku=str(a.get("sku", "")),
+                        canal=str(a.get("canal", "")),
+                        metrica="forward_divergencia",
+                        valor=doi_atual,
+                        referencia=doi_plan_fwd,
+                        desvio_pct=div_pct,
+                        severidade=sev,
+                        pais=str(a.get("pais", "")),
+                        categoria=str(a.get("categoria", "")),
+                        marca=str(a.get("marca", "")),
+                        risco_forward=risco,
                     ))
 
     return sinais

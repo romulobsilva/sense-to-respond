@@ -22,6 +22,19 @@ from typing import Any, Dict, List, Optional, Set
 import numpy as np
 import pandas as pd
 
+DIRECAO_MELHORANDO = "melhorando"
+DIRECAO_PIORANDO = "piorando"
+DIRECAO_ESTAVEL = "estavel"
+
+RISCO_RUPTURA = "ruptura"
+RISCO_OVERSTOCK = "overstock"
+RISCO_GAP_PLANO = "gap_plano"
+
+LIMIAR_TENDENCIA_ESTAVEL_PCT = 3.0
+LIMIAR_PREMISSA_FURADA_PCT = 15.0
+DOI_RUPTURA_DIAS = 15.0
+DOI_OVERSTOCK_DIAS = 40.0
+
 
 CAPACIDADE_SELLOUT = "sellout"
 CAPACIDADE_SELLIN = "sellin"
@@ -633,3 +646,454 @@ def resumir_por_categoria(
         totais["si_actual_total"] = round(float(grouped["si_actual"].sum()), 2)
 
     return {"resumo_categorias": resumos, "totais": totais}
+
+
+def _data_corte_efetiva(
+    df: pd.DataFrame,
+    col_date: str,
+    col_actual: str,
+    data_corte: Optional[str],
+) -> pd.Timestamp:
+    """
+    Determina a data de corte entre dados realizados e forward.
+
+    Se data_corte nao for fornecida, usa a ultima data onde actual nao e NaN.
+    """
+    if data_corte is not None:
+        return pd.Timestamp(data_corte)
+    real = df[df[col_actual].notna()]
+    if real.empty:
+        return pd.Timestamp(df[col_date].max())
+    return pd.Timestamp(real[col_date].max())
+
+
+def _classificar_direcao_doi(doi_recente: float, doi_anterior: float) -> str:
+    """
+    Classifica direcao da tendencia de DOI.
+
+    DOI caindo = melhorando (estoque drenando).
+    DOI subindo = piorando (estoque acumulando).
+    """
+    if doi_anterior <= 0:
+        return DIRECAO_ESTAVEL
+    delta_pct = ((doi_recente - doi_anterior) / doi_anterior) * 100.0
+    if delta_pct < -LIMIAR_TENDENCIA_ESTAVEL_PCT:
+        return DIRECAO_MELHORANDO
+    if delta_pct > LIMIAR_TENDENCIA_ESTAVEL_PCT:
+        return DIRECAO_PIORANDO
+    return DIRECAO_ESTAVEL
+
+
+def _contar_semanas_consecutivas(
+    serie_semanal: pd.Series,
+    col_desvio: str,
+) -> int:
+    """
+    Conta semanas consecutivas (do fim para o inicio) com desvio no mesmo sinal.
+
+    Retorna o numero de semanas consecutivas onde o desvio manteve o mesmo
+    sinal (positivo ou negativo) a partir da semana mais recente.
+    """
+    if serie_semanal.empty:
+        return 0
+    valores = serie_semanal.values
+    if len(valores) == 0:
+        return 0
+    ultimo = valores[-1]
+    if ultimo == 0:
+        return 0
+    sinal_ultimo = ultimo > 0
+    contagem = 0
+    for v in reversed(valores):
+        if (v > 0) == sinal_ultimo and v != 0:
+            contagem += 1
+        else:
+            break
+    return contagem
+
+
+def analisar_tendencia(
+    df: pd.DataFrame,
+    mapa: Dict[str, str],
+    janela_recente_dias: int = 30,
+    data_corte: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Analise de tendencia temporal: compara periodo recente vs anterior.
+
+    Separa dados realizados em duas janelas (recente e anterior) e
+    calcula direcao de SO e DOI por SKU x Pais x Canal.
+
+    Args:
+        df: DataFrame com dados (canonico ou original).
+        mapa: dicionario {col_original: col_canonica}.
+        janela_recente_dias: tamanho da janela recente em dias.
+        data_corte: data de corte opcional (ISO format). Se None,
+            usa ultima data com actuals.
+
+    Returns:
+        Dict com "tendencias" (lista por SKU/Pais/Canal) e "resumo".
+    """
+    col_date = _col(df, mapa, "Date")
+    col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
+    col_so_plan = _col(df, mapa, "SellOut_Plan_Ton")
+    col_doi_actual = _col(df, mapa, "DOI_Actual_Days")
+
+    if col_date is None or col_so_actual is None:
+        return {"tendencias": [], "resumo": {"erro": "colunas temporais ausentes"}}
+
+    work = df.copy()
+    work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
+    work = work.dropna(subset=[col_date])
+
+    corte = _data_corte_efetiva(work, col_date, col_so_actual, data_corte)
+
+    realizados = work[work[col_so_actual].notna()].copy()
+    if realizados.empty:
+        return {"tendencias": [], "resumo": {"total_skus": 0}}
+
+    corte_recente = corte - pd.Timedelta(days=janela_recente_dias)
+    corte_anterior = corte_recente - pd.Timedelta(days=janela_recente_dias)
+
+    recentes = realizados[realizados[col_date] > corte_recente]
+    anteriores = realizados[
+        (realizados[col_date] > corte_anterior)
+        & (realizados[col_date] <= corte_recente)
+    ]
+
+    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    if not dim_cols:
+        return {"tendencias": [], "resumo": {"erro": "dimensoes ausentes"}}
+
+    def _agg_janela(sub: pd.DataFrame) -> pd.DataFrame:
+        if sub.empty:
+            return pd.DataFrame()
+        agg: Dict[str, Any] = {}
+        if col_so_plan is not None and col_so_plan in sub.columns:
+            agg[col_so_plan] = "sum"
+        agg[col_so_actual] = "sum"
+        if col_doi_actual is not None and col_doi_actual in sub.columns:
+            agg[col_doi_actual] = "mean"
+        return sub.groupby(dim_cols, as_index=False).agg(agg)
+
+    df_recente = _agg_janela(recentes)
+    df_anterior = _agg_janela(anteriores)
+
+    if df_recente.empty:
+        return {"tendencias": [], "resumo": {"total_skus": 0}}
+
+    # Semanas consecutivas: agrupar por semana ISO para contar
+    realizados["_semana"] = realizados[col_date].dt.isocalendar().week.astype(int)
+    semana_cols = dim_cols + ["_semana"]
+    if col_so_plan is not None and col_so_plan in realizados.columns:
+        sem_agg = {col_so_plan: "sum", col_so_actual: "sum"}
+    else:
+        sem_agg = {col_so_actual: "sum"}
+    semanal = realizados.groupby(semana_cols, as_index=False).agg(sem_agg)
+    if col_so_plan is not None and col_so_plan in semanal.columns:
+        semanal["_desvio_sem"] = semanal[col_so_actual] - semanal[col_so_plan]
+    else:
+        semanal["_desvio_sem"] = 0.0
+
+    dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
+
+    tendencias: List[Dict[str, Any]] = []
+    for _, row_r in df_recente.iterrows():
+        chave_vals = tuple(row_r[c] for c in dim_cols)
+
+        so_recente = float(row_r[col_so_actual])
+        so_plan_recente = float(row_r.get(col_so_plan, 0) or 0) if col_so_plan else 0.0
+        doi_recente = float(row_r.get(col_doi_actual, 0) or 0) if col_doi_actual else 0.0
+
+        so_anterior = 0.0
+        doi_anterior = 0.0
+        if not df_anterior.empty:
+            filtro_ant = df_anterior
+            for col_d, val in zip(dim_cols, chave_vals):
+                if col_d in filtro_ant.columns:
+                    filtro_ant = filtro_ant[filtro_ant[col_d] == val]
+            if not filtro_ant.empty:
+                so_anterior = float(filtro_ant[col_so_actual].iloc[0])
+                if col_doi_actual and col_doi_actual in filtro_ant.columns:
+                    doi_anterior = float(filtro_ant[col_doi_actual].iloc[0])
+
+        if so_plan_recente != 0:
+            so_desvio_recente = round(
+                ((so_recente - so_plan_recente) / so_plan_recente) * 100.0, 2
+            )
+        else:
+            so_desvio_recente = 0.0
+
+        direcao_doi = _classificar_direcao_doi(doi_recente, doi_anterior)
+
+        if so_anterior > 0:
+            so_variacao = round(
+                ((so_recente - so_anterior) / so_anterior) * 100.0, 2
+            )
+        else:
+            so_variacao = 0.0
+
+        # Semanas consecutivas para este grupo
+        filtro_sem = semanal.copy()
+        for col_d, val in zip(dim_cols, chave_vals):
+            filtro_sem = filtro_sem[filtro_sem[col_d] == val]
+        filtro_sem = filtro_sem.sort_values("_semana")
+        sem_consec = _contar_semanas_consecutivas(
+            filtro_sem["_desvio_sem"], "_desvio_sem"
+        )
+
+        t: Dict[str, Any] = {
+            "so_recente_ton": round(so_recente, 2),
+            "so_anterior_ton": round(so_anterior, 2),
+            "so_desvio_recente_pct": so_desvio_recente,
+            "so_variacao_pct": so_variacao,
+            "doi_recente": round(doi_recente, 1),
+            "doi_anterior": round(doi_anterior, 1),
+            "direcao_doi": direcao_doi,
+            "semanas_consecutivas": sem_consec,
+        }
+        for col_df, col_canon in dim_map.items():
+            val = row_r.get(col_df)
+            if col_canon == "SKU_Code":
+                key = "sku"
+            elif col_canon == "Country":
+                key = "pais"
+            elif col_canon == "Channel":
+                key = "canal"
+            elif col_canon == "Category":
+                key = "categoria"
+            elif col_canon == "Brand":
+                key = "marca"
+            else:
+                key = col_canon.lower()
+            t[key] = str(val) if val is not None and not pd.isna(val) else ""
+        tendencias.append(t)
+
+    piorando = sum(1 for t in tendencias if t["direcao_doi"] == DIRECAO_PIORANDO)
+    melhorando = sum(1 for t in tendencias if t["direcao_doi"] == DIRECAO_MELHORANDO)
+
+    resumo: Dict[str, Any] = {
+        "total_skus": len(tendencias),
+        "janela_dias": janela_recente_dias,
+        "data_corte": str(corte.date()),
+        "doi_piorando": piorando,
+        "doi_melhorando": melhorando,
+        "doi_estavel": len(tendencias) - piorando - melhorando,
+    }
+
+    return {"tendencias": tendencias, "resumo": resumo}
+
+
+def analisar_forward(
+    df: pd.DataFrame,
+    mapa: Dict[str, str],
+    janela_recente_dias: int = 30,
+    data_corte: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Analise forward: cruza tendencia recente com plano futuro.
+
+    Detecta premissas furadas no plano (plan-only diverge da tendencia
+    recente) e projeta riscos de ruptura/overstock.
+
+    Args:
+        df: DataFrame com dados (canonico ou original).
+        mapa: dicionario {col_original: col_canonica}.
+        janela_recente_dias: tamanho da janela recente em dias.
+        data_corte: data de corte opcional (ISO format).
+
+    Returns:
+        Dict com "alertas_forward" (lista por SKU/Pais/Canal) e "resumo".
+    """
+    col_date = _col(df, mapa, "Date")
+    col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
+    col_so_plan = _col(df, mapa, "SellOut_Plan_Ton")
+    col_si_plan = _col(df, mapa, "SellIn_Plan_Ton")
+    col_si_actual = _col(df, mapa, "SellIn_Actual_Ton")
+    col_doi_actual = _col(df, mapa, "DOI_Actual_Days")
+    col_doi_plan = _col(df, mapa, "DOI_Plan_Days")
+
+    if col_date is None or col_so_plan is None:
+        return {"alertas_forward": [], "resumo": {"erro": "colunas ausentes"}}
+
+    work = df.copy()
+    work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
+    work = work.dropna(subset=[col_date])
+
+    corte = _data_corte_efetiva(
+        work, col_date,
+        col_so_actual if col_so_actual is not None else col_so_plan,
+        data_corte,
+    )
+    corte_recente_inicio = corte - pd.Timedelta(days=janela_recente_dias)
+
+    # Dados realizados recentes (janela)
+    if col_so_actual is not None:
+        realizados = work[
+            (work[col_so_actual].notna())
+            & (work[col_date] > corte_recente_inicio)
+            & (work[col_date] <= corte)
+        ]
+    else:
+        realizados = pd.DataFrame()
+
+    # Dados forward (plan-only, apos a data de corte)
+    if col_so_actual is not None:
+        forward = work[work[col_so_actual].isna() & (work[col_date] > corte)]
+    else:
+        forward = work[work[col_date] > corte]
+
+    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    if not dim_cols:
+        return {"alertas_forward": [], "resumo": {"erro": "dimensoes ausentes"}}
+
+    dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
+
+    # Agregar realizados recentes
+    agg_real: Dict[str, Any] = {}
+    if col_so_plan is not None and col_so_plan in realizados.columns:
+        agg_real[col_so_plan] = "sum"
+    if col_so_actual is not None and col_so_actual in realizados.columns:
+        agg_real[col_so_actual] = "sum"
+    if col_si_plan is not None and col_si_plan in realizados.columns:
+        agg_real[col_si_plan] = "sum"
+    if col_si_actual is not None and col_si_actual in realizados.columns:
+        agg_real[col_si_actual] = "sum"
+    if col_doi_actual is not None and col_doi_actual in realizados.columns:
+        agg_real[col_doi_actual] = "mean"
+
+    if not realizados.empty and agg_real:
+        real_agg = realizados.groupby(dim_cols, as_index=False).agg(agg_real)
+    else:
+        real_agg = pd.DataFrame()
+
+    # Agregar forward
+    agg_fwd: Dict[str, Any] = {}
+    if col_so_plan is not None and col_so_plan in forward.columns:
+        agg_fwd[col_so_plan] = "sum"
+    if col_si_plan is not None and col_si_plan in forward.columns:
+        agg_fwd[col_si_plan] = "sum"
+    if col_doi_plan is not None and col_doi_plan in forward.columns:
+        agg_fwd[col_doi_plan] = "mean"
+
+    if not forward.empty and agg_fwd:
+        fwd_agg = forward.groupby(dim_cols, as_index=False).agg(agg_fwd)
+    else:
+        fwd_agg = pd.DataFrame()
+
+    if real_agg.empty or fwd_agg.empty:
+        return {"alertas_forward": [], "resumo": {"total_alertas": 0}}
+
+    # Obter ultimo DOI realizado por grupo (snapshot mais recente)
+    doi_snapshot: Dict[tuple, float] = {}
+    if col_doi_actual is not None and col_doi_actual in work.columns:
+        real_all = work[work[col_doi_actual].notna()]
+        if not real_all.empty:
+            idx_max = real_all.groupby(dim_cols)[col_date].idxmax()
+            for idx_val in idx_max:
+                row_snap = real_all.loc[idx_val]
+                chave = tuple(row_snap[c] for c in dim_cols)
+                doi_snapshot[chave] = float(row_snap[col_doi_actual])
+
+    alertas: List[Dict[str, Any]] = []
+    for _, row_fwd in fwd_agg.iterrows():
+        chave_vals = tuple(row_fwd[c] for c in dim_cols)
+
+        # Encontrar dados recentes correspondentes
+        filtro_real = real_agg.copy()
+        for col_d, val in zip(dim_cols, chave_vals):
+            filtro_real = filtro_real[filtro_real[col_d] == val]
+        if filtro_real.empty:
+            continue
+
+        row_real = filtro_real.iloc[0]
+
+        # SO: tendencia recente (actual vs plan) vs plano forward
+        so_plan_recente = float(row_real.get(col_so_plan, 0) or 0) if col_so_plan else 0.0
+        so_actual_recente = float(row_real.get(col_so_actual, 0) or 0) if col_so_actual else 0.0
+        so_plan_forward = float(row_fwd.get(col_so_plan, 0) or 0) if col_so_plan else 0.0
+
+        if so_plan_recente > 0:
+            so_tendencia_pct = round(
+                ((so_actual_recente - so_plan_recente) / so_plan_recente) * 100.0, 2
+            )
+        else:
+            so_tendencia_pct = 0.0
+
+        # Plano forward assume que SO tera qual variacao vs actual recente?
+        dias_forward = max(1, (forward[col_date].max() - corte).days)
+        dias_recente = max(1, janela_recente_dias)
+        so_diario_real = so_actual_recente / dias_recente
+        so_diario_plan_fwd = so_plan_forward / dias_forward
+
+        if so_diario_real > 0:
+            divergencia_forward_pct = round(
+                ((so_diario_plan_fwd - so_diario_real) / so_diario_real) * 100.0, 2
+            )
+        else:
+            divergencia_forward_pct = 0.0
+
+        premissa_coerente = abs(divergencia_forward_pct) <= LIMIAR_PREMISSA_FURADA_PCT
+
+        # DOI: snapshot atual vs plano forward
+        doi_atual = doi_snapshot.get(chave_vals, 0.0)
+        doi_plan_fwd = float(row_fwd.get(col_doi_plan, 0) or 0) if col_doi_plan else 0.0
+
+        # SI forward
+        si_plan_fwd = float(row_fwd.get(col_si_plan, 0) or 0) if col_si_plan else 0.0
+        si_actual_recente = float(row_real.get(col_si_actual, 0) or 0) if col_si_actual else 0.0
+
+        # Classificar risco projetado
+        risco = ""
+        if doi_atual > 0 and doi_atual < DOI_RUPTURA_DIAS and so_tendencia_pct > 5.0:
+            risco = RISCO_RUPTURA
+        elif doi_atual > DOI_OVERSTOCK_DIAS:
+            risco = RISCO_OVERSTOCK
+        if not premissa_coerente and not risco:
+            risco = RISCO_GAP_PLANO
+
+        if not risco and premissa_coerente:
+            continue
+
+        alerta: Dict[str, Any] = {
+            "so_tendencia_recente_pct": so_tendencia_pct,
+            "so_diario_real": round(so_diario_real, 4),
+            "so_diario_plan_fwd": round(so_diario_plan_fwd, 4),
+            "divergencia_forward_pct": divergencia_forward_pct,
+            "premissa_coerente": premissa_coerente,
+            "doi_atual": round(doi_atual, 1),
+            "doi_plan_forward": round(doi_plan_fwd, 1),
+            "si_plan_forward_ton": round(si_plan_fwd, 2),
+            "si_actual_recente_ton": round(si_actual_recente, 2),
+            "risco_projetado": risco,
+        }
+        for col_df, col_canon in dim_map.items():
+            val = row_fwd.get(col_df)
+            if col_canon == "SKU_Code":
+                key = "sku"
+            elif col_canon == "Country":
+                key = "pais"
+            elif col_canon == "Channel":
+                key = "canal"
+            elif col_canon == "Category":
+                key = "categoria"
+            elif col_canon == "Brand":
+                key = "marca"
+            else:
+                key = col_canon.lower()
+            alerta[key] = str(val) if val is not None and not pd.isna(val) else ""
+        alertas.append(alerta)
+
+    rupturas = sum(1 for a in alertas if a["risco_projetado"] == RISCO_RUPTURA)
+    overstocks = sum(1 for a in alertas if a["risco_projetado"] == RISCO_OVERSTOCK)
+    gaps = sum(1 for a in alertas if a["risco_projetado"] == RISCO_GAP_PLANO)
+
+    resumo: Dict[str, Any] = {
+        "total_alertas": len(alertas),
+        "rupturas_projetadas": rupturas,
+        "overstocks_projetados": overstocks,
+        "gaps_plano": gaps,
+        "data_corte": str(corte.date()),
+    }
+
+    return {"alertas_forward": alertas, "resumo": resumo}

@@ -18,6 +18,7 @@ TIPOS_DECISAO_MVP = frozenset({
     "ajustar_plano_sellin",
     "rebalancear_estoque_doi",
     "investigar_desvio_canal",
+    "questionar_premissa_plano",
 })
 
 
@@ -37,6 +38,9 @@ class Sinal:
     pais: str = ""
     categoria: str = ""
     marca: str = ""
+    tendencia: str = ""
+    semanas_consecutivas: int = 0
+    risco_forward: str = ""
 
     def para_dict(self) -> Dict[str, Any]:
         """Serializa o sinal para JSON."""

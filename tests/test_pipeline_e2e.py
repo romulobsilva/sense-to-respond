@@ -36,6 +36,10 @@ FIXTURE_CSV = str(
     Path(__file__).parent / "fixtures" / "mondelez_ficticio.csv"
 )
 
+FIXTURE_TEMPORAL_CSV = str(
+    Path(__file__).parent / "fixtures" / "mondelez_temporal.csv"
+)
+
 
 def _settings_teste() -> Settings:
     """Settings para teste sem API key real."""
@@ -434,3 +438,156 @@ class TestPipelineE2EMondelez:
         assert not resultado.get("bloqueado", False)
         assert resultado.get("dataset_canonico") is None
         assert "carregar_dados" in resultado.get("acoes_executadas", [])
+
+
+class TestPipelineE2ETemporal:
+    """
+    Teste E2E com fixture temporal que valida cenarios do gabarito.
+
+    Cenarios plantados na fixture mondelez_temporal.csv:
+      - BEL-TEST-75G: SO subindo + DOI caindo -> ruptura forward
+      - HAL-TEST-28G: DOI subindo + SI alto -> overstock forward
+      - MLK-TEST-100G: DOI era alto mas normalizou -> falso-positivo DOI
+    """
+
+    @patch("critic.OpenAI")
+    @patch("agent.OpenAI")
+    def test_milka_nao_no_top10_rebalancear(
+        self,
+        mock_agent_openai: MagicMock,
+        mock_critic_openai: MagicMock,
+    ) -> None:
+        """Milka com DOI normalizando NAO deve gerar rebalancear_estoque_doi."""
+        mock_agent_client = MagicMock()
+        mock_agent_openai.return_value = mock_agent_client
+        mock_agent_client.chat.completions.create.return_value = (
+            _mock_explicacao_response()
+        )
+
+        mock_critic_client = MagicMock()
+        mock_critic_openai.return_value = mock_critic_client
+        mock_critic_client.chat.completions.create.return_value = (
+            _mock_critic_response()
+        )
+
+        settings = _settings_teste()
+        from agent import AgenteOpenAI
+        agente = AgenteOpenAI(settings)
+
+        nexus = Nexus(
+            agente=agente,
+            settings=settings,
+            hitl=HITLAutoApprove(),
+            arquivo_entrada=FIXTURE_TEMPORAL_CSV,
+        )
+
+        resultado = nexus.executar("Analise os dados.")
+        assert not resultado.get("bloqueado", False)
+
+        proposicoes = resultado.get("proposicoes", [])
+        milka_rebal = [
+            p for p in proposicoes
+            if isinstance(p, dict)
+            and p.get("tipo") == "rebalancear_estoque_doi"
+            and "MLK-TEST-100G" in p.get("skus", [])
+        ]
+        assert len(milka_rebal) == 0, (
+            "Milka com DOI normalizando nao deve gerar rebalancear_estoque_doi"
+        )
+
+    @patch("critic.OpenAI")
+    @patch("agent.OpenAI")
+    def test_belvita_aparece_como_ruptura(
+        self,
+        mock_agent_openai: MagicMock,
+        mock_critic_openai: MagicMock,
+    ) -> None:
+        """Belvita deve gerar questionar_premissa_plano com risco ruptura."""
+        mock_agent_client = MagicMock()
+        mock_agent_openai.return_value = mock_agent_client
+        mock_agent_client.chat.completions.create.return_value = (
+            _mock_explicacao_response()
+        )
+
+        mock_critic_client = MagicMock()
+        mock_critic_openai.return_value = mock_critic_client
+        mock_critic_client.chat.completions.create.return_value = (
+            _mock_critic_response()
+        )
+
+        settings = _settings_teste()
+        from agent import AgenteOpenAI
+        agente = AgenteOpenAI(settings)
+
+        nexus = Nexus(
+            agente=agente,
+            settings=settings,
+            hitl=HITLAutoApprove(),
+            arquivo_entrada=FIXTURE_TEMPORAL_CSV,
+        )
+
+        resultado = nexus.executar("Analise os dados.")
+        assert not resultado.get("bloqueado", False)
+
+        proposicoes = resultado.get("proposicoes", [])
+        belvita_ruptura = [
+            p for p in proposicoes
+            if isinstance(p, dict)
+            and p.get("tipo") == "questionar_premissa_plano"
+            and "BEL-TEST-75G" in p.get("skus", [])
+        ]
+        assert len(belvita_ruptura) >= 1, (
+            "Belvita deve gerar questionar_premissa_plano"
+        )
+        descricao = belvita_ruptura[0].get("descricao", "")
+        assert "RUPTURA" in descricao.upper(), (
+            f"Descricao deve conter RUPTURA: {descricao}"
+        )
+
+    @patch("critic.OpenAI")
+    @patch("agent.OpenAI")
+    def test_tendencia_e_forward_no_state(
+        self,
+        mock_agent_openai: MagicMock,
+        mock_critic_openai: MagicMock,
+    ) -> None:
+        """Resultados devem conter analise_tendencia e analise_forward."""
+        mock_agent_client = MagicMock()
+        mock_agent_openai.return_value = mock_agent_client
+        mock_agent_client.chat.completions.create.return_value = (
+            _mock_explicacao_response()
+        )
+
+        mock_critic_client = MagicMock()
+        mock_critic_openai.return_value = mock_critic_client
+        mock_critic_client.chat.completions.create.return_value = (
+            _mock_critic_response()
+        )
+
+        settings = _settings_teste()
+        from agent import AgenteOpenAI
+        agente = AgenteOpenAI(settings)
+
+        nexus = Nexus(
+            agente=agente,
+            settings=settings,
+            hitl=HITLAutoApprove(),
+            arquivo_entrada=FIXTURE_TEMPORAL_CSV,
+        )
+
+        resultado = nexus.executar("Analise os dados.")
+        resultados = resultado.get("resultados", {})
+
+        assert "analise_tendencia" in resultados
+        assert "analise_forward" in resultados
+
+        tendencias = resultados["analise_tendencia"].get("tendencias", [])
+        assert len(tendencias) > 0
+
+        alertas = resultados["analise_forward"].get("alertas_forward", [])
+        assert len(alertas) > 0
+
+        sinais = resultado.get("sinais", [])
+        tipos = {s["tipo"] for s in sinais if isinstance(s, dict)}
+        assert "tendencia_temporal" in tipos
+        assert "premissa_forward_furada" in tipos
