@@ -35,6 +35,11 @@ LIMIAR_PREMISSA_FURADA_PCT = 15.0
 DOI_RUPTURA_DIAS = 15.0
 DOI_OVERSTOCK_DIAS = 40.0
 
+RISCO_OPORTUNIDADE = "oportunidade"
+
+LIMIAR_ACELERACAO_PCT = 5.0
+LIMIAR_DESVIO_PERSISTENTE_MESES = 3
+
 
 CAPACIDADE_SELLOUT = "sellout"
 CAPACIDADE_SELLIN = "sellin"
@@ -782,7 +787,6 @@ def analisar_tendencia(
     if df_recente.empty:
         return {"tendencias": [], "resumo": {"total_skus": 0}}
 
-    # Semanas consecutivas: agrupar por semana ISO para contar
     realizados["_semana"] = realizados[col_date].dt.isocalendar().week.astype(int)
     semana_cols = dim_cols + ["_semana"]
     if col_so_plan is not None and col_so_plan in realizados.columns:
@@ -792,8 +796,14 @@ def analisar_tendencia(
     semanal = realizados.groupby(semana_cols, as_index=False).agg(sem_agg)
     if col_so_plan is not None and col_so_plan in semanal.columns:
         semanal["_desvio_sem"] = semanal[col_so_actual] - semanal[col_so_plan]
+        semanal["_desvio_sem_pct"] = np.where(
+            semanal[col_so_plan] != 0,
+            ((semanal[col_so_actual] - semanal[col_so_plan]) / semanal[col_so_plan] * 100.0),
+            0.0,
+        )
     else:
         semanal["_desvio_sem"] = 0.0
+        semanal["_desvio_sem_pct"] = 0.0
 
     dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
 
@@ -833,7 +843,6 @@ def analisar_tendencia(
         else:
             so_variacao = 0.0
 
-        # Semanas consecutivas para este grupo
         filtro_sem = semanal.copy()
         for col_d, val in zip(dim_cols, chave_vals):
             filtro_sem = filtro_sem[filtro_sem[col_d] == val]
@@ -842,11 +851,28 @@ def analisar_tendencia(
             filtro_sem["_desvio_sem"], "_desvio_sem"
         )
 
+        # Ritmo de variacao SO: comparar desvio% das ultimas 3 semanas
+        # vs 3 semanas anteriores para detectar aceleracao/desaceleracao
+        desvios_sem = filtro_sem["_desvio_sem_pct"].values
+        so_aceleracao = 0.0
+        so_ritmo = "estavel"
+        if len(desvios_sem) >= 4:
+            metade = len(desvios_sem) // 2
+            media_recente_sem = float(np.mean(desvios_sem[metade:]))
+            media_anterior_sem = float(np.mean(desvios_sem[:metade]))
+            so_aceleracao = round(media_recente_sem - media_anterior_sem, 2)
+            if so_aceleracao > LIMIAR_ACELERACAO_PCT:
+                so_ritmo = "acelerando"
+            elif so_aceleracao < -LIMIAR_ACELERACAO_PCT:
+                so_ritmo = "desacelerando"
+
         t: Dict[str, Any] = {
             "so_recente_ton": round(so_recente, 2),
             "so_anterior_ton": round(so_anterior, 2),
             "so_desvio_recente_pct": so_desvio_recente,
             "so_variacao_pct": so_variacao,
+            "so_aceleracao_pct": so_aceleracao,
+            "so_ritmo": so_ritmo,
             "doi_recente": round(doi_recente, 1),
             "doi_anterior": round(doi_anterior, 1),
             "direcao_doi": direcao_doi,
@@ -871,6 +897,8 @@ def analisar_tendencia(
 
     piorando = sum(1 for t in tendencias if t["direcao_doi"] == DIRECAO_PIORANDO)
     melhorando = sum(1 for t in tendencias if t["direcao_doi"] == DIRECAO_MELHORANDO)
+    acelerando = sum(1 for t in tendencias if t["so_ritmo"] == "acelerando")
+    desacelerando = sum(1 for t in tendencias if t["so_ritmo"] == "desacelerando")
 
     resumo: Dict[str, Any] = {
         "total_skus": len(tendencias),
@@ -879,6 +907,8 @@ def analisar_tendencia(
         "doi_piorando": piorando,
         "doi_melhorando": melhorando,
         "doi_estavel": len(tendencias) - piorando - melhorando,
+        "so_acelerando": acelerando,
+        "so_desacelerando": desacelerando,
     }
 
     return {"tendencias": tendencias, "resumo": resumo}
@@ -1044,9 +1074,17 @@ def analisar_forward(
         si_actual_recente = float(row_real.get(col_si_actual, 0) or 0) if col_si_actual else 0.0
 
         # Classificar risco projetado
+        # SO acima do plano + DOI baixo + plano subdimensionado = OPORTUNIDADE
+        # SO acima do plano + DOI baixo + plano nao cobre = RUPTURA se plano nao sobe
         risco = ""
-        if doi_atual > 0 and doi_atual < DOI_RUPTURA_DIAS and so_tendencia_pct > 5.0:
-            risco = RISCO_RUPTURA
+        so_acima_plano = so_tendencia_pct > 5.0
+        plano_subdimensionado = divergencia_forward_pct < -LIMIAR_PREMISSA_FURADA_PCT
+
+        if doi_atual > 0 and doi_atual < DOI_RUPTURA_DIAS and so_acima_plano:
+            if plano_subdimensionado:
+                risco = RISCO_OPORTUNIDADE
+            else:
+                risco = RISCO_RUPTURA
         elif doi_atual > DOI_OVERSTOCK_DIAS:
             risco = RISCO_OVERSTOCK
         if not premissa_coerente and not risco:
@@ -1087,13 +1125,142 @@ def analisar_forward(
     rupturas = sum(1 for a in alertas if a["risco_projetado"] == RISCO_RUPTURA)
     overstocks = sum(1 for a in alertas if a["risco_projetado"] == RISCO_OVERSTOCK)
     gaps = sum(1 for a in alertas if a["risco_projetado"] == RISCO_GAP_PLANO)
+    oportunidades = sum(1 for a in alertas if a["risco_projetado"] == RISCO_OPORTUNIDADE)
 
     resumo: Dict[str, Any] = {
         "total_alertas": len(alertas),
         "rupturas_projetadas": rupturas,
         "overstocks_projetados": overstocks,
         "gaps_plano": gaps,
+        "oportunidades": oportunidades,
         "data_corte": str(corte.date()),
     }
 
     return {"alertas_forward": alertas, "resumo": resumo}
+
+
+def analisar_desvio_persistente(
+    df: pd.DataFrame,
+    mapa: Dict[str, str],
+    min_meses: int = LIMIAR_DESVIO_PERSISTENTE_MESES,
+) -> Dict[str, Any]:
+    """
+    Detecta SKUs com desvio de SO no mesmo sinal por N meses consecutivos.
+
+    Agrupa dados realizados por mes-calendario e calcula desvio% mensal.
+    Se o desvio mantem o mesmo sinal (positivo ou negativo) por pelo menos
+    ``min_meses`` meses consecutivos (contando do mais recente para tras),
+    o SKU e marcado como desvio persistente.
+
+    Args:
+        df: DataFrame com dados (canonico ou original).
+        mapa: dicionario {col_original: col_canonica}.
+        min_meses: minimo de meses consecutivos para considerar
+            desvio como persistente.
+
+    Returns:
+        Dict com "persistentes" (lista por SKU/Pais/Canal) e "resumo".
+    """
+    col_date = _col(df, mapa, "Date")
+    col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
+    col_so_plan = _col(df, mapa, "SellOut_Plan_Ton")
+
+    if col_date is None or col_so_actual is None or col_so_plan is None:
+        return {"persistentes": [], "resumo": {"erro": "colunas ausentes"}}
+
+    work = df.copy()
+    work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
+    work = work.dropna(subset=[col_date, col_so_actual, col_so_plan])
+
+    if work.empty:
+        return {"persistentes": [], "resumo": {"total": 0}}
+
+    work["_ano_mes"] = work[col_date].dt.to_period("M")
+
+    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    if not dim_cols:
+        return {"persistentes": [], "resumo": {"erro": "dimensoes ausentes"}}
+
+    group_cols = dim_cols + ["_ano_mes"]
+    mensal = work.groupby(group_cols, as_index=False).agg(
+        {col_so_actual: "sum", col_so_plan: "sum"}
+    )
+    mensal["_desvio_pct"] = np.where(
+        mensal[col_so_plan] != 0,
+        ((mensal[col_so_actual] - mensal[col_so_plan]) / mensal[col_so_plan] * 100.0),
+        0.0,
+    )
+
+    dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
+
+    persistentes: List[Dict[str, Any]] = []
+    for chave, grupo in mensal.groupby(dim_cols, sort=False):
+        if not isinstance(chave, tuple):
+            chave = (chave,)
+        grupo_ord = grupo.sort_values("_ano_mes")
+        desvios = grupo_ord["_desvio_pct"].values
+        if len(desvios) < min_meses:
+            continue
+
+        meses_consec = _contar_meses_consecutivos_mesmo_sinal(desvios)
+        if meses_consec < min_meses:
+            continue
+
+        media_desvio = round(float(np.mean(desvios[-meses_consec:])), 2)
+        direcao = "acima" if media_desvio > 0 else "abaixo"
+
+        item: Dict[str, Any] = {
+            "meses_consecutivos": meses_consec,
+            "media_desvio_pct": media_desvio,
+            "direcao": direcao,
+            "total_meses_dados": len(desvios),
+        }
+        for col_df, col_canon in dim_map.items():
+            val = grupo_ord[col_df].iloc[0]
+            if col_canon == "SKU_Code":
+                key = "sku"
+            elif col_canon == "Country":
+                key = "pais"
+            elif col_canon == "Channel":
+                key = "canal"
+            elif col_canon == "Category":
+                key = "categoria"
+            elif col_canon == "Brand":
+                key = "marca"
+            else:
+                key = col_canon.lower()
+            item[key] = str(val) if val is not None and not pd.isna(val) else ""
+        persistentes.append(item)
+
+    persistentes.sort(key=lambda p: abs(p["media_desvio_pct"]), reverse=True)
+
+    resumo: Dict[str, Any] = {
+        "total": len(persistentes),
+        "acima": sum(1 for p in persistentes if p["direcao"] == "acima"),
+        "abaixo": sum(1 for p in persistentes if p["direcao"] == "abaixo"),
+        "min_meses": min_meses,
+    }
+    return {"persistentes": persistentes, "resumo": resumo}
+
+
+def _contar_meses_consecutivos_mesmo_sinal(valores: "np.ndarray") -> int:
+    """
+    Conta meses consecutivos com desvio no mesmo sinal, do fim para o inicio.
+
+    Ignora valores exatamente zero.
+    """
+    if len(valores) == 0:
+        return 0
+    ultimo = valores[-1]
+    if ultimo == 0:
+        return 0
+    sinal_ultimo = ultimo > 0
+    contagem = 0
+    for v in reversed(valores):
+        if v == 0:
+            break
+        if (v > 0) == sinal_ultimo:
+            contagem += 1
+        else:
+            break
+    return contagem

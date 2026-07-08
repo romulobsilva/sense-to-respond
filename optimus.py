@@ -11,12 +11,18 @@ Tipos de proposicao suportados:
     - ajustar_plano_sellin: desvio sell-in >= 5%
     - rebalancear_estoque_doi: DOI fora da politica (gap >= 7 dias)
     - questionar_premissa_plano: plano forward diverge da tendencia recente
+    - capturar_oportunidade: SO acima do plano + DOI baixo (oportunidade, nao risco)
+    - investigar_desvio_persistente: desvio no mesmo sinal por N meses
     - investigar_desvio_canal: SI e SO divergem no mesmo SKU (futuro)
 
 Detector de falso-positivo (DOI):
   Se um sinal doi_fora_politica tem tendencia "melhorando" (campo via
   analise_tendencia), a proposicao de rebalancear e suprimida para evitar
   alertas sobre DOI que ja esta normalizando.
+
+Enriquecimento de causa-raiz (DOI overstock):
+  Quando overstock detectado e SO desacelerando (so_ritmo do sinal de
+  tendencia), a descricao destaca a desaceleracao como causa-raiz.
 
 Impacto financeiro: sempre deterministico, nunca calculado por LLM.
 """
@@ -216,7 +222,13 @@ def gerar_proposicoes(
                 tipo = "rebalancear_estoque_doi"
                 dims = _dim_label(sinal)
                 if gap_dias > 0:
-                    if tend is not None and tend.tendencia == "piorando":
+                    if tend is not None and tend.so_ritmo == "desacelerando":
+                        acao = (
+                            f"CAUSA-RAIZ: SO desacelerando "
+                            f"({tend.so_aceleracao_pct:+.1f}pp entre semanas recentes vs anteriores). "
+                            f"Segurar sell-in e investigar queda de sell-out."
+                        )
+                    elif tend is not None and tend.tendencia == "piorando":
                         acao = "SEGURAR sell-in imediatamente; DOI piorando."
                     else:
                         acao = "Reduzir sell-in ou acelerar sell-out para drenar estoque."
@@ -269,6 +281,54 @@ def gerar_proposicoes(
                 proposicao_id=f"P{contador}",
                 tipo=tipo,
                 titulo=f"Questionar premissa plano - {sinal.sku}{dims}",
+                descricao=descricao,
+                impacto_financeiro=impacto,
+                impacto_calculado=impacto,
+                urgencia_horas=_urgencia_de_severidade(sinal.severidade),
+                skus=[sinal.sku],
+                evidencias=[sinal.sinal_id],
+            ))
+
+        if sinal.tipo == "forward_oportunidade":
+            contador += 1
+            impacto = _estimar_impacto_nr(sinal)
+            tipo = "capturar_oportunidade"
+            dims = _dim_label(sinal)
+            descricao = (
+                f"OPORTUNIDADE: SKU {sinal.sku}{dims} -- SO acima do plano "
+                f"({sinal.desvio_pct:+.1f}%), DOI {sinal.valor:.0f}d "
+                f"(saudavel). Plano forward subdimensionado: aumentar "
+                f"sell-in e realocar estoque para capturar demanda."
+            )
+            proposicoes.append(Proposicao(
+                proposicao_id=f"P{contador}",
+                tipo=tipo,
+                titulo=f"Capturar oportunidade - {sinal.sku}{dims}",
+                descricao=descricao,
+                impacto_financeiro=impacto,
+                impacto_calculado=impacto,
+                urgencia_horas=_urgencia_de_severidade(sinal.severidade),
+                skus=[sinal.sku],
+                evidencias=[sinal.sinal_id],
+            ))
+
+        if sinal.tipo == "desvio_persistente":
+            contador += 1
+            impacto = _estimar_impacto_nr(sinal)
+            tipo = "investigar_desvio_persistente"
+            dims = _dim_label(sinal)
+            direcao_txt = "acima" if sinal.media_desvio_persistente_pct > 0 else "abaixo"
+            descricao = (
+                f"DESVIO PERSISTENTE: SKU {sinal.sku}{dims} -- SO "
+                f"{direcao_txt} do plano por {sinal.meses_desvio_persistente} "
+                f"meses consecutivos (media {sinal.media_desvio_persistente_pct:+.1f}%). "
+                f"Indica problema estrutural no plano, nao pontual. "
+                f"Revisar premissas de baseline."
+            )
+            proposicoes.append(Proposicao(
+                proposicao_id=f"P{contador}",
+                tipo=tipo,
+                titulo=f"Investigar desvio persistente - {sinal.sku}{dims}",
                 descricao=descricao,
                 impacto_financeiro=impacto,
                 impacto_calculado=impacto,

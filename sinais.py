@@ -7,8 +7,10 @@ Tipos de sinal suportados:
   - desvio_sellout: SO actual vs plan (dados Mondelez, ADR-0019)
   - desvio_sellin: SI actual vs plan (dados Mondelez, ADR-0019)
   - doi_fora_politica: DOI actual vs target (dados Mondelez, ADR-0019)
-  - tendencia_temporal: direcao DOI + SO recente vs anterior
+  - tendencia_temporal: direcao DOI + SO recente vs anterior + ritmo variacao
   - premissa_forward_furada: plano futuro diverge da tendencia recente
+  - forward_oportunidade: SO acima + DOI baixo + plano subdimensionado
+  - desvio_persistente: desvio no mesmo sinal por N meses consecutivos
 
 Severidade segue thresholds do S&OE Analyst Questions Script:
   - SO/SI: >10% alta, >5% media, resto baixa
@@ -205,6 +207,8 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                     so_var = float(t.get("so_variacao_pct", 0))
                     sem_consec = int(t.get("semanas_consecutivas", 0))
                     desvio_pct = float(t.get("so_desvio_recente_pct", 0))
+                    ritmo = str(t.get("so_ritmo", "estavel"))
+                    aceleracao = float(t.get("so_aceleracao_pct", 0))
                     contador += 1
                     sinais.append(Sinal(
                         sinal_id=f"SIG-TEND-{contador:03d}",
@@ -221,6 +225,8 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         marca=str(t.get("marca", "")),
                         tendencia=direcao,
                         semanas_consecutivas=sem_consec,
+                        so_ritmo=ritmo,
+                        so_aceleracao_pct=aceleracao,
                     ))
 
     if "analise_forward" in resultados:
@@ -239,12 +245,15 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         sev = "alta"
                     elif risco == "overstock":
                         sev = "alta"
+                    elif risco == "oportunidade":
+                        sev = "media"
                     else:
                         sev = "media"
+                    tipo_sinal = "forward_oportunidade" if risco == "oportunidade" else "premissa_forward_furada"
                     contador += 1
                     sinais.append(Sinal(
                         sinal_id=f"SIG-FWD-{contador:03d}",
-                        tipo="premissa_forward_furada",
+                        tipo=tipo_sinal,
                         sku=str(a.get("sku", "")),
                         canal=str(a.get("canal", "")),
                         metrica="forward_divergencia",
@@ -256,6 +265,34 @@ def extrair_sinais_de_resultados(resultados: Dict[str, Any]) -> List[Sinal]:
                         categoria=str(a.get("categoria", "")),
                         marca=str(a.get("marca", "")),
                         risco_forward=risco,
+                    ))
+
+    if "analise_desvio_persistente" in resultados:
+        analise = resultados["analise_desvio_persistente"]
+        if isinstance(analise, dict):
+            persistentes = analise.get("persistentes", [])
+            if isinstance(persistentes, list):
+                for p in persistentes:
+                    if not isinstance(p, dict):
+                        continue
+                    meses = int(p.get("meses_consecutivos", 0))
+                    media_dev = float(p.get("media_desvio_pct", 0))
+                    contador += 1
+                    sinais.append(Sinal(
+                        sinal_id=f"SIG-PERS-{contador:03d}",
+                        tipo="desvio_persistente",
+                        sku=str(p.get("sku", "")),
+                        canal=str(p.get("canal", "")),
+                        metrica="sellout_desvio_mensal",
+                        valor=media_dev,
+                        referencia=0.0,
+                        desvio_pct=media_dev,
+                        severidade="alta" if meses >= 4 else "media",
+                        pais=str(p.get("pais", "")),
+                        categoria=str(p.get("categoria", "")),
+                        marca=str(p.get("marca", "")),
+                        meses_desvio_persistente=meses,
+                        media_desvio_persistente_pct=media_dev,
                     ))
 
     return sinais

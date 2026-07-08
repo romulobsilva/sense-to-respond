@@ -54,18 +54,29 @@ escreva uma explicacao executiva clara em portugues. Siga estas regras:
 
 1. Comece com visao geral (desvio medio SO, SI, DOI).
 2. PRIORIZE os ALERTAS FORWARD quando presentes:
-   - RUPTURA: DOI baixo + SO subindo, plano futuro nao cobre demanda.
-   - OVERSTOCK: DOI alto e subindo, plano futuro ainda empurra estoque.
+   - OPORTUNIDADE: SO acima do plano + DOI saudavel. Plano subdimensionado.
+     Aumentar sell-in para capturar demanda. NAO classificar como ruptura.
+   - RUPTURA: DOI baixo + SO subindo + plano forward nao cobre.
+   - OVERSTOCK: DOI alto e subindo, plano forward ainda empurra estoque.
    - GAP_PLANO: plano forward assume reversao de tendencia sem evidencia.
 3. Mencione a TENDENCIA DOI: quais SKUs estao piorando vs melhorando.
    Se DOI esta melhorando (caindo), nao alarme -- o risco esta se dissipando.
-4. Liste as proposicoes mais urgentes (maior impacto financeiro).
-5. Se houver DOI fora da politica (gap > 7d), distinga:
+4. RITMO DE VARIACAO SO: se SO esta desacelerando (queda progressiva
+   semana a semana), destacar como CAUSA-RAIZ de overstock. Exemplo:
+   "SO piorou de -8% para -16% nas ultimas semanas -- desaceleracao
+   explica o acumulo de estoque."
+5. DESVIO PERSISTENTE: se um SKU apresenta desvio no mesmo sinal
+   por 3+ meses consecutivos, classificar como problema ESTRUTURAL
+   (nao pontual). Exemplo: "desvio de -17% se repete ha 4 meses --
+   premissa de baseline precisa ser revisada."
+6. Liste as proposicoes mais urgentes (maior impacto financeiro).
+7. Se houver DOI fora da politica (gap > 7d), distinga:
+   - DOI alto + SO desacelerando -> SEGURAR sell-in (causa-raiz: queda SO)
    - DOI alto + tendencia piorando -> SEGURAR sell-in (critico)
    - DOI alto + tendencia melhorando -> monitorar, sem acao urgente
-   - DOI baixo + SO subindo -> risco de RUPTURA, subir sell-in
-6. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
-7. NAO invente numeros. Use apenas os dados fornecidos no contexto.
+   - DOI baixo + SO subindo -> se plano cobre, OPORTUNIDADE; senao RUPTURA
+8. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
+9. NAO invente numeros. Use apenas os dados fornecidos no contexto.
 """
 
 

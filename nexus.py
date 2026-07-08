@@ -39,6 +39,7 @@ from state_types import (
 )
 from tools import serializar_resultados_para_llm
 from tools_parametrizadas import (
+    analisar_desvio_persistente,
     analisar_doi,
     analisar_forward,
     analisar_sellin,
@@ -303,13 +304,23 @@ class Nexus:
             f"Forward: {n_alertas} alerta(s), "
             f"rupturas={resumo_fwd.get('rupturas_projetadas', 0)}, "
             f"overstocks={resumo_fwd.get('overstocks_projetados', 0)}, "
-            f"gaps_plano={resumo_fwd.get('gaps_plano', 0)}"
+            f"gaps_plano={resumo_fwd.get('gaps_plano', 0)}, "
+            f"oportunidades={resumo_fwd.get('oportunidades', 0)}"
+        )
+
+        res_pers = analisar_desvio_persistente(df, mapa)
+        resultados["analise_desvio_persistente"] = res_pers
+        n_pers = res_pers.get("resumo", {}).get("total", 0)
+        self._log(
+            f"Desvio persistente: {n_pers} SKU(s) com desvio recorrente "
+            f"(acima={res_pers.get('resumo', {}).get('acima', 0)}, "
+            f"abaixo={res_pers.get('resumo', {}).get('abaixo', 0)})"
         )
 
         state["resultados"] = resultados
         state["acoes_executadas"] = [
             f"analisar_{cap}" for cap in caps
-        ] + ["analisar_tendencia", "analisar_forward"]
+        ] + ["analisar_tendencia", "analisar_forward", "analisar_desvio_persistente"]
 
         if auditoria is not None:
             auditoria.registrar(
@@ -445,11 +456,14 @@ class Nexus:
                 linhas.append("")
                 linhas.append("=== TENDENCIA DOI ===")
                 for t in piorando:
+                    ritmo_txt = ""
+                    if t.get("so_ritmo") == "desacelerando":
+                        ritmo_txt = f" [SO DESACELERANDO {t.get('so_aceleracao_pct', 0):+.1f}pp]"
                     linhas.append(
                         f"- {t.get('sku', '?')} ({t.get('pais', '?')}, "
                         f"{t.get('canal', '?')}): DOI PIORANDO "
                         f"{t.get('doi_anterior', 0):.0f}d -> "
-                        f"{t.get('doi_recente', 0):.0f}d"
+                        f"{t.get('doi_recente', 0):.0f}d{ritmo_txt}"
                     )
                 for t in melhorando:
                     linhas.append(
@@ -457,6 +471,50 @@ class Nexus:
                         f"{t.get('canal', '?')}): DOI melhorando "
                         f"{t.get('doi_anterior', 0):.0f}d -> "
                         f"{t.get('doi_recente', 0):.0f}d"
+                    )
+
+            # SKUs com SO acelerando ou desacelerando
+            desacelerando = [
+                t for t in tendencias
+                if isinstance(t, dict) and t.get("so_ritmo") == "desacelerando"
+            ]
+            acelerando = [
+                t for t in tendencias
+                if isinstance(t, dict) and t.get("so_ritmo") == "acelerando"
+            ]
+            if desacelerando or acelerando:
+                linhas.append("")
+                linhas.append("=== RITMO DE VARIACAO SO ===")
+                for t in desacelerando:
+                    linhas.append(
+                        f"- {t.get('sku', '?')} ({t.get('pais', '?')}, "
+                        f"{t.get('canal', '?')}): SO DESACELERANDO "
+                        f"({t.get('so_aceleracao_pct', 0):+.1f}pp entre semanas)"
+                    )
+                for t in acelerando:
+                    linhas.append(
+                        f"- {t.get('sku', '?')} ({t.get('pais', '?')}, "
+                        f"{t.get('canal', '?')}): SO acelerando "
+                        f"({t.get('so_aceleracao_pct', 0):+.1f}pp entre semanas)"
+                    )
+
+        # Desvio persistente
+        pers = resumo.get("analise_desvio_persistente", {})
+        if isinstance(pers, dict):
+            persistentes = pers.get("persistentes", [])
+            if persistentes:
+                linhas.append("")
+                linhas.append(
+                    f"=== DESVIO PERSISTENTE ({len(persistentes)} SKU(s)) ==="
+                )
+                for p in persistentes:
+                    if not isinstance(p, dict):
+                        continue
+                    linhas.append(
+                        f"- {p.get('sku', '?')} ({p.get('pais', '?')}, "
+                        f"{p.get('canal', '?')}): SO {p.get('direcao', '?')} do plano "
+                        f"por {p.get('meses_consecutivos', 0)} meses "
+                        f"(media {p.get('media_desvio_pct', 0):+.1f}%)"
                     )
 
         n_sinais = len(state.get("sinais", []))

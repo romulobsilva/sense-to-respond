@@ -24,10 +24,13 @@ from tools_parametrizadas import (
     RISCO_RUPTURA,
     RISCO_OVERSTOCK,
     RISCO_GAP_PLANO,
+    RISCO_OPORTUNIDADE,
     analisar_tendencia,
     analisar_forward,
+    analisar_desvio_persistente,
     _classificar_direcao_doi,
     _contar_semanas_consecutivas,
+    _contar_meses_consecutivos_mesmo_sinal,
 )
 from sinais import extrair_sinais_de_resultados
 from optimus import gerar_proposicoes
@@ -423,3 +426,195 @@ class TestProposicoesEnriquecidas:
         ]
         assert len(hal_fwd) == 1
         assert "OVERSTOCK" in hal_fwd[0].descricao.upper()
+
+
+class TestContarMesesConsecutivos:
+    """Testes para _contar_meses_consecutivos_mesmo_sinal."""
+
+    def test_todos_negativos(self) -> None:
+        import numpy as np
+        vals = np.array([-10.0, -15.0, -17.0, -12.0])
+        assert _contar_meses_consecutivos_mesmo_sinal(vals) == 4
+
+    def test_mudanca_de_sinal(self) -> None:
+        import numpy as np
+        vals = np.array([5.0, -10.0, -15.0, -17.0])
+        assert _contar_meses_consecutivos_mesmo_sinal(vals) == 3
+
+    def test_ultimo_zero(self) -> None:
+        import numpy as np
+        vals = np.array([-10.0, -15.0, 0.0])
+        assert _contar_meses_consecutivos_mesmo_sinal(vals) == 0
+
+    def test_vazio(self) -> None:
+        import numpy as np
+        assert _contar_meses_consecutivos_mesmo_sinal(np.array([])) == 0
+
+    def test_todos_positivos(self) -> None:
+        import numpy as np
+        vals = np.array([3.0, 5.0, 8.0])
+        assert _contar_meses_consecutivos_mesmo_sinal(vals) == 3
+
+
+class TestRitmoVariacaoSO:
+    """Testes para ritmo de variacao SO (aceleracao/desaceleracao)."""
+
+    def test_tendencia_contem_so_ritmo(self) -> None:
+        """analisar_tendencia deve retornar so_ritmo e so_aceleracao_pct."""
+        sinal_tend = Sinal(
+            sinal_id="SIG-TEND-001", tipo="tendencia_temporal",
+            sku="OREO_MX", canal="RETAIL", metrica="tendencia_doi_so",
+            valor=50.0, referencia=40.0, desvio_pct=-16.0,
+            severidade="alta", pais="MX", tendencia="piorando",
+            so_ritmo="desacelerando", so_aceleracao_pct=-8.0,
+        )
+        assert sinal_tend.so_ritmo == "desacelerando"
+        assert sinal_tend.so_aceleracao_pct == -8.0
+
+    def test_optimus_overstock_com_causa_raiz(self) -> None:
+        """DOI overstock + SO desacelerando -> proposicao com CAUSA-RAIZ."""
+        sinal_doi = Sinal(
+            sinal_id="SIG-DOI-001", tipo="doi_fora_politica",
+            sku="OREO_MX", canal="RETAIL", metrica="doi_dias",
+            valor=50.0, referencia=30.0, desvio_pct=66.0,
+            severidade="alta", pais="MX",
+        )
+        sinal_tend = Sinal(
+            sinal_id="SIG-TEND-001", tipo="tendencia_temporal",
+            sku="OREO_MX", canal="RETAIL", metrica="tendencia_doi_so",
+            valor=50.0, referencia=40.0, desvio_pct=-16.0,
+            severidade="alta", pais="MX", tendencia="piorando",
+            so_ritmo="desacelerando", so_aceleracao_pct=-8.0,
+        )
+        proposicoes = gerar_proposicoes([sinal_doi, sinal_tend])
+        doi_props = [
+            p for p in proposicoes
+            if p.tipo == "rebalancear_estoque_doi"
+        ]
+        assert len(doi_props) == 1
+        assert "CAUSA-RAIZ" in doi_props[0].descricao
+        assert "desacelerando" in doi_props[0].descricao.lower()
+
+
+class TestClassificadorOportunidade:
+    """Testes para classificacao oportunidade vs risco."""
+
+    def test_oportunidade_forward_gera_sinal_correto(self) -> None:
+        """forward_oportunidade no sinais.py gera tipo correto."""
+        resultados = {
+            "analise_forward": {
+                "alertas_forward": [
+                    {
+                        "risco_projetado": "oportunidade",
+                        "divergencia_forward_pct": -20.0,
+                        "doi_atual": 10.0,
+                        "doi_plan_forward": 25.0,
+                        "sku": "TANG_BR",
+                        "canal": "RETAIL",
+                        "pais": "BR",
+                        "categoria": "Beverage",
+                        "marca": "Tang",
+                    },
+                ],
+                "resumo": {"total_alertas": 1},
+            },
+        }
+        sinais = extrair_sinais_de_resultados(resultados)
+        oport = [s for s in sinais if s.tipo == "forward_oportunidade"]
+        assert len(oport) == 1
+        assert oport[0].risco_forward == "oportunidade"
+        assert oport[0].sku == "TANG_BR"
+
+    def test_oportunidade_gera_proposicao_capturar(self) -> None:
+        """forward_oportunidade -> capturar_oportunidade proposicao."""
+        sinal = Sinal(
+            sinal_id="SIG-FWD-001", tipo="forward_oportunidade",
+            sku="TANG_BR", canal="RETAIL", metrica="forward_divergencia",
+            valor=10.0, referencia=25.0, desvio_pct=-20.0,
+            severidade="media", pais="BR", risco_forward="oportunidade",
+        )
+        props = gerar_proposicoes([sinal])
+        assert len(props) == 1
+        assert props[0].tipo == "capturar_oportunidade"
+        assert "OPORTUNIDADE" in props[0].descricao
+
+    def test_ruptura_nao_vira_oportunidade(self) -> None:
+        """premissa_forward_furada com risco ruptura mantido como ruptura."""
+        sinal = Sinal(
+            sinal_id="SIG-FWD-001", tipo="premissa_forward_furada",
+            sku="BEL_X", canal="RETAIL", metrica="forward_divergencia",
+            valor=8.0, referencia=20.0, desvio_pct=-30.0,
+            severidade="alta", pais="BR", risco_forward="ruptura",
+        )
+        props = gerar_proposicoes([sinal])
+        assert len(props) == 1
+        assert props[0].tipo == "questionar_premissa_plano"
+        assert "RUPTURA" in props[0].descricao
+
+
+class TestDesvioPersistente:
+    """Testes para heuristica de desvio persistente."""
+
+    def test_sinal_desvio_persistente_criado(self) -> None:
+        """analise_desvio_persistente gera sinais corretos."""
+        resultados = {
+            "analise_desvio_persistente": {
+                "persistentes": [
+                    {
+                        "sku": "TANG_AR",
+                        "canal": "RETAIL",
+                        "pais": "AR",
+                        "categoria": "Beverage",
+                        "marca": "Tang",
+                        "meses_consecutivos": 4,
+                        "media_desvio_pct": -17.0,
+                        "direcao": "abaixo",
+                    },
+                ],
+                "resumo": {"total": 1},
+            },
+        }
+        sinais = extrair_sinais_de_resultados(resultados)
+        pers = [s for s in sinais if s.tipo == "desvio_persistente"]
+        assert len(pers) == 1
+        assert pers[0].meses_desvio_persistente == 4
+        assert pers[0].media_desvio_persistente_pct == -17.0
+        assert pers[0].severidade == "alta"
+
+    def test_proposicao_investigar_desvio_persistente(self) -> None:
+        """desvio_persistente -> investigar_desvio_persistente."""
+        sinal = Sinal(
+            sinal_id="SIG-PERS-001", tipo="desvio_persistente",
+            sku="TANG_AR", canal="RETAIL", metrica="sellout_desvio_mensal",
+            valor=-17.0, referencia=0.0, desvio_pct=-17.0,
+            severidade="alta", pais="AR",
+            meses_desvio_persistente=4, media_desvio_persistente_pct=-17.0,
+        )
+        props = gerar_proposicoes([sinal])
+        assert len(props) == 1
+        assert props[0].tipo == "investigar_desvio_persistente"
+        assert "PERSISTENTE" in props[0].descricao
+        assert "4 meses" in props[0].descricao
+        assert "estrutural" in props[0].descricao.lower()
+
+    def test_menos_de_3_meses_nao_gera_sinal(self) -> None:
+        """Desvio por apenas 2 meses nao gera sinal de alta severidade."""
+        resultados = {
+            "analise_desvio_persistente": {
+                "persistentes": [
+                    {
+                        "sku": "TEST_X",
+                        "canal": "RETAIL",
+                        "pais": "BR",
+                        "meses_consecutivos": 2,
+                        "media_desvio_pct": -10.0,
+                        "direcao": "abaixo",
+                    },
+                ],
+                "resumo": {"total": 1},
+            },
+        }
+        sinais = extrair_sinais_de_resultados(resultados)
+        pers = [s for s in sinais if s.tipo == "desvio_persistente"]
+        assert len(pers) == 1
+        assert pers[0].severidade == "media"
