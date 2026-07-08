@@ -87,85 +87,273 @@ Arquitetura multi-agente com validador, critic e fila human-in-the-loop.
 Correcoes de seguranca e qualidade exigidas por ADR-0011 e ADR-0006.
 
 ### 1.0.1 Fix Critic parsing (ADR-0011)
-- [ ] Fix bool("false")==True no critic.py (aprovado deve ser booleano real)
-- [ ] Validar confianca entre 0.0 e 1.0 no critic.py
-- [ ] Retry com mensagem corretiva quando tipo errado
+- [x] Fix bool("false")==True no critic.py (aprovado deve ser booleano real)
+- [x] Validar confianca entre 0.0 e 1.0 no critic.py
+- [x] Retry com mensagem corretiva quando tipo errado
 
 ### 1.0.2 Retry JSON no agent.py (ADR-0011)
-- [ ] Adicionar retry com max 2 tentativas para JSON invalido
-- [ ] Validar chaves obrigatorias (acao, justificativa)
-- [ ] Fallback deterministico apos retries esgotados
-- [ ] Registrar falha de parse na auditoria
+- [x] Adicionar retry com max 2 tentativas para JSON invalido
+- [x] Validar chaves obrigatorias (acao, justificativa)
+- [x] Fallback deterministico apos retries esgotados
+- [x] Registrar falha de parse na auditoria
 
 ### 1.0.3 Dependencias
-- [ ] Adicionar openpyxl ao requirements.txt (pre-requisito DataShield)
-- [ ] Adicionar pytest ao requirements.txt (pre-requisito testes)
+- [x] Adicionar openpyxl ao requirements.txt (pre-requisito DataShield)
+- [x] Adicionar pytest ao requirements.txt (pre-requisito testes)
 
 ### 1.0.4 Testes iniciais (testing.md)
-- [ ] Criar diretorio tests/
-- [ ] test_guardrails.py: input valido, curto, longo, injection
-- [ ] test_critic.py: bool parsing, confianca range, JSON invalido
-- [ ] test_validator.py: SKU inexistente, evidencia inexistente, whitelist
-- [ ] test_optimus.py: sem sinais, com sinais, ordenacao
-- [ ] test_state_types.py: criacao, serializacao, conversao
+- [x] Criar diretorio tests/
+- [x] test_guardrails.py: input valido, curto, longo, injection
+- [x] test_critic.py: bool parsing, confianca range, JSON invalido
+- [x] test_validator.py: SKU inexistente, evidencia inexistente, whitelist
+- [x] test_optimus.py: sem sinais, com sinais, ordenacao
+- [x] test_state_types.py: criacao, serializacao, conversao
+
+---
+
+## Ordem de implementacao das fases 1.5, 1.5b e 1.5c
+
+As fases tem dependencias entre si. A ordem obrigatoria e:
+
+```text
+Bloco A (infraestrutura, pode ser paralelo):
+  A1: hitl.py (protocolo abstrato + HITLTerminal + HITLAutoApprove)  [1.5.3 parcial]
+  A2: datashield.py (leitura + perfil)                               [1.5.1]
+  A3: Fixture CSV ficticio Mondelez                                  [1.5b.6 parcial]
+
+Bloco B (depende de A):
+  B1: datashield.py (inferencia semantica Nivel 1 + normalizacao)    [1.5.2 + 1.5.4]
+  B2: tools_parametrizadas.py (detectar_capacidades + analises)      [1.5b.3]
+  B3: sinais.py (novos tipos de sinal)                               [1.5b.4]
+  B4: optimus.py (novos tipos de proposicao)                         [1.5b.5]
+  B5: state_types.py (novos campos e tipos)                          [1.5b.4 + 1.5b.5]
+
+Bloco C (depende de A + B):
+  C1: nexus.py (integrar DataShield + HITL + tools parametrizadas)   [1.5.5]
+  C2: main.py (aceitar --input arquivo)                              [1.5.5]
+  C3: Testes E2E com fixture CSV                                     [1.5b.6]
+
+Bloco D (depende de C, pode ser independente do pipeline):
+  D1: HITLStreamlit + app_streamlit.py                               [1.5c.1 + 1.5c.2]
+  D2: Comunicacao JSON approvals/                                    [1.5c.3]
+  D3: Estilo EY + export Excel                                       [1.5c.4]
+
+Bloco E (adiado, so se Nivel 1 nao resolver):
+  E1: Geracao de ETL (Nivel 2)                                       [1.5.2b]
+  E2: Diagnostico de incompatibilidade (Nivel 3)                     [1.5.2c]
+```
 
 ---
 
 ## Fase 1.5 - DataShield Lite (proximo)
 
-Inferencia semantica de xlsx/csv sem schema fixo.
+Inferencia semantica de xlsx/csv sem schema fixo. 3 niveis de adaptacao (ADR-0020).
 
 ### 1.5.1 Leitura de arquivos
-- [ ] Aceitar upload de xlsx e csv (argumento CLI ou diretorio)
-- [ ] Ler arquivo com pandas (xlsx: openpyxl; csv: auto-detect separator)
-- [ ] Amostrar N primeiras linhas + headers
-- [ ] Calcular stats basicos por coluna (tipo, nulos, unicos)
+- [ ] Criar `datashield.py` com classe `DataShield`
+- [ ] Aceitar upload de xlsx e csv (argumento CLI `--input`)
+- [ ] `ler_arquivo(caminho) -> pd.DataFrame` em `datashield.py`
+- [ ] `gerar_perfil(df) -> dict` em `datashield.py` (tipo, nulos, unicos por coluna)
+- [ ] `amostrar(df, n=5) -> list[dict]` em `datashield.py`
 
-### 1.5.2 Inferencia semantica via LLM
-- [ ] Prompt com amostra de dados -> JSON mapa semantico
-- [ ] Campos obrigatorios: temporal, canal, produto, metricas, completeness, confianca
+### 1.5.2 Inferencia semantica via LLM (Nivel 1)
+- [ ] `inferir_mapa_semantico(perfil, amostra, schema_canonico) -> dict` em `datashield.py` (llm_tool)
+- [ ] Prompt conforme `docs/prompts.md` secao 8 (schema de saida definido)
+- [ ] Campos obrigatorios na saida: temporal, canal, produto, metricas, dimensoes, confidence, warnings
 - [ ] JSON validate com retry (max 2 tentativas)
 - [ ] Confidence gate: confianca >= 0.6 para prosseguir
+- [ ] Detectar colunas extras nao mapeadas (lista em warnings)
 
-### 1.5.3 Human-in-the-loop
-- [ ] Exibir mapa inferido no terminal para usuario confirmar
-- [ ] Aceitar correcoes manuais (ex: trocar nome de coluna)
-- [ ] So avancar apos confirmacao explicita
+### 1.5.2b Geracao de ETL (Nivel 2 - ADR-0021) -- ADIADO para apos validacao do Nivel 1
+- [ ] `gerar_script_etl(perfil, schema_canonico, diagnostico) -> dict` em `datashield.py` (llm_tool)
+- [ ] Whitelist de operacoes pandas (rename, groupby, merge, fillna, drop, astype)
+- [ ] `validar_script_etl(script: str, whitelist) -> bool` em `datashield.py` (validacao estatica)
+- [ ] Revisao humana obrigatoria via HITL antes de execucao
+- [ ] `executar_script_etl(script: str, df: pd.DataFrame) -> pd.DataFrame` em sandbox
+- [ ] `validar_schema_pos_etl(df_resultado, schema_canonico) -> bool` em `datashield.py`
+
+### 1.5.2c Diagnostico de incompatibilidade (Nivel 3) -- ADIADO para apos validacao do Nivel 1
+- [ ] `diagnosticar_incompatibilidade(perfil, mapa, schema_canonico) -> dict` em `datashield.py`
+- [ ] Retornar: campos_presentes, campos_ausentes, cobertura_pct, sugestao
+- [ ] Humano decide via HITL se prossegue com cobertura parcial ou para
+
+### 1.5.3 Human-in-the-loop (ADR-0022)
+- [ ] Criar `hitl.py` com `InterfaceHITL` (ABC), `PedidoAprovacao`, `DecisaoHumana`
+- [ ] `HITLTerminal` em `hitl.py`: usa `input()` para pedir decisao
+- [ ] `HITLAutoApprove` em `hitl.py`: aprova tudo (para testes pytest)
+- [ ] Exibir mapa inferido formatado no terminal para usuario confirmar
+- [ ] Aceitar correcoes manuais (ex: trocar nome de coluna mapeada)
+- [ ] So avancar apos `decisao != None`
 
 ### 1.5.4 Normalizacao
-- [ ] Aplicar mapeamento confirmado ao DataFrame
-- [ ] Renomear colunas para schema canonico
-- [ ] Salvar template de mapeamento para proxima carga (JSON)
-- [ ] Reutilizar template automaticamente se mesmo formato
+- [ ] `normalizar_dataset(df, mapa) -> pd.DataFrame` em `datashield.py` (deterministic_tool)
+- [ ] Renomear colunas conforme mapa confirmado
+- [ ] Manter colunas extras como estao (nao descartar)
+- [ ] `salvar_template(mapa, caminho) -> None` em `datashield.py` (io_tool)
+- [ ] `carregar_template(caminho) -> dict` em `datashield.py` (io_tool)
+- [ ] Reutilizar template automaticamente se hash das colunas bater
 
 ### 1.5.5 Integracao com Nexus
-- [ ] DataShield como primeiro passo do pipeline (antes do Dominion)
-- [ ] State: schema_confirmado, dataset_canonico
-- [ ] Handoff DataShield -> Dominion registrado na auditoria
+- [ ] `nexus.py`: adicionar etapa DataShield antes de Dominion
+- [ ] `nexus.py`: aceitar `hitl: InterfaceHITL` como parametro do construtor
+- [ ] `main.py`: aceitar `--input caminho` para arquivo CSV/XLSX
+- [ ] `main.py`: instanciar HITL conforme `HITL_MODE` do .env
+- [ ] State: `schema_confirmado`, `dataset_canonico`, `nivel_adaptacao`, `capacidades`
+- [ ] Handoff `DataShield -> Dominion` registrado na auditoria
+- [ ] Se `--input` nao fornecido, usar dados simulados (modo legado)
 
 ---
 
-## Fase 1.6 - Dominion expandido
+## Fase 1.5b - Dados reais Mondelez (ADR-0019)
 
-Analises multi-dimensionais alinhadas a apresentacao EY.
+Integrar CSV real Mondelez S&OE com tools parametrizadas.
 
-### 1.6.1 Novos nodes de analise
-- [ ] Desvio vs plano (IBP)
-- [ ] Desequilibrio de canal (sell-in vs sell-out)
-- [ ] Risco de ruptura (DOI - Days of Inventory)
-- [ ] Aceleracao/desaceleracao de canal
-- [ ] Tendencia semanal por SKU
+### 1.5b.1 Carregar CSV Mondelez
+- [ ] `carregar_csv(caminho) -> pd.DataFrame` em `datashield.py` (io_tool, reutiliza ler_arquivo)
+- [ ] Validar que arquivo existe e extensao e csv/xlsx
+- [ ] Armazenar no state como `dataset_csv`
+
+### 1.5b.2 Mapeamento do CSV Mondelez
+- [ ] Mapa semantico para colunas do CSV Mondelez (confianca esperada > 0.90)
+- [ ] Validar contra schema canonico definido em `architecture.md` secao 12
+- [ ] Testar com DataShield Nivel 1 (mapeamento puro, sem ETL)
+
+### 1.5b.3 Tools parametrizadas
+Todas em `tools_parametrizadas.py` (novo arquivo):
+
+```text
+detectar_capacidades(mapa: dict) -> list[str]
+  Retorna: ["sellout", "sellin", "doi"] ou subconjunto
+  Arquivo: tools_parametrizadas.py
+
+analisar_sellout(df: pd.DataFrame, mapa: dict) -> dict
+  Retorna: {"desvios": [...], "resumo": {...}}
+  Cada desvio: {"sku", "pais", "canal", "categoria", "marca",
+                "actual", "plan", "desvio_pct", "nr_impacto"}
+  Arquivo: tools_parametrizadas.py
+
+analisar_sellin(df: pd.DataFrame, mapa: dict) -> dict
+  Retorna: mesma estrutura de analisar_sellout
+  Arquivo: tools_parametrizadas.py
+
+analisar_doi(df: pd.DataFrame, mapa: dict) -> dict
+  Retorna: {"desvios": [...], "resumo": {...}}
+  Cada desvio: {"sku", "pais", "canal", "doi_actual", "doi_policy",
+                "gap_dias", "nr_impacto"}
+  Arquivo: tools_parametrizadas.py
+```
+
+### 1.5b.4 Novos sinais
+Em `sinais.py` (funcao `extrair_sinais_de_resultados` expandida):
+- [ ] Tipo `desvio_sellout` com severidade calculada por threshold (>10% alta, >5% media, resto baixa)
+- [ ] Tipo `desvio_sellin` com mesma logica de severidade
+- [ ] Tipo `doi_fora_politica` com severidade (gap > 15 dias alta, > 7 media, resto baixa)
+- [ ] Cada sinal inclui dimensoes: `pais`, `canal`, `categoria`, `marca`
+
+### 1.5b.5 Novas proposicoes
+Em `optimus.py` (funcao `gerar_proposicoes` expandida):
+- [ ] `ajustar_plano_sellout` -- gerada quando desvio_sellout > threshold
+- [ ] `ajustar_plano_sellin` -- gerada quando desvio_sellin > threshold
+- [ ] `rebalancear_estoque_doi` -- gerada quando doi_fora_politica
+- [ ] `investigar_desvio_canal` -- gerada quando sell-in e sell-out divergem
+- [ ] Impacto financeiro: `abs(desvio_pct) * nr_impacto` (deterministico)
+
+Em `state_types.py`:
+- [ ] Adicionar novos tipos a `TIPOS_DECISAO_MVP`
+- [ ] Adicionar novos campos opcionais ao dataclass `Sinal` (pais, canal, categoria, marca)
+
+Em `validator.py`:
+- [ ] Atualizar whitelist para incluir novos tipos
+
+### 1.5b.6 Testes
+- [ ] `tests/fixtures/mondelez_ficticio.csv`: 20 linhas, 15 colunas, 2 paises, 2 canais, dados fake
+- [ ] `tests/test_tools_parametrizadas.py`: entrada valida, invalida, mapa parcial, df vazio
+- [ ] `tests/test_datashield.py`: perfil, mapa, normalizacao
+- [ ] `tests/test_sinais_mondelez.py`: novos tipos de sinal
+- [ ] `tests/test_optimus_mondelez.py`: novos tipos de proposicao
+- [ ] E2E: `python main.py --modo nexus --input tests/fixtures/mondelez_ficticio.csv`
+
+---
+
+## Fase 1.5c - HITL Streamlit para demo EY (ADR-0022, ADR-0023)
+
+Interface visual para human-in-the-loop. Pode ser desenvolvida em paralelo ao Bloco C.
+
+### 1.5c.1 Protocolo HITL Streamlit
+Em `hitl.py` (mesmo arquivo do protocolo abstrato):
+- [ ] `HITLStreamlit`: gera JSON em `approvals/`, faz polling ate decisao
+- [ ] Polling com intervalo configuravel via `config.py` (padrao 1s)
+- [ ] Timeout maximo de espera configuravel (padrao 300s)
+- [ ] Fallback: se timeout, retornar `DecisaoHumana.POSTERGADO`
+
+### 1.5c.2 App Streamlit
+Em `app_streamlit.py` (novo arquivo):
+- [ ] Tela 1: Upload e preview do dataset (st.file_uploader + st.dataframe)
+- [ ] Tela 2: Mapeamento semantico com tabela editavel e botoes aprovar/rejeitar
+- [ ] Tela 3: Progresso do pipeline (le state/progress.json, exibe barra)
+- [ ] Tela 4: Fila Nexus com cards de proposicao (aprovar/rejeitar/postergar por item)
+- [ ] Tela 5: Audit trail (le auditoria JSON, exibe timeline)
+
+### 1.5c.3 Comunicacao pipeline-UI
+Em `hitl.py` (metodos de HITLStreamlit):
+- [ ] Criar diretorio `approvals/` automaticamente se nao existir
+- [ ] Gerar JSON com campos: `id`, `tipo`, `timestamp`, `status`, `dados`, `decisao`, `comentario`, `decidido_por`, `decidido_em`
+- [ ] Streamlit le JSONs com status `pendente` e exibe
+- [ ] Streamlit grava `decisao` + `decidido_em` no JSON
+- [ ] Pipeline detecta `decisao != null` e continua
+
+### 1.5c.4 Estilo e UX
+Em `app_streamlit.py`:
+- [ ] CSS customizado com cores EY (amarelo `#FFE600`, preto `#2E2E38`)
+- [ ] Cards de proposicao com: SKU, pais, canal, impacto, confianca, evidencias
+- [ ] Filtros por severidade na fila Nexus (selectbox)
+- [ ] Botao "Exportar para Excel" (openpyxl, gera XLSX com fila completa)
+- [ ] Layout responsivo (st.columns para demo em projetor)
+
+### 1.5c.5 Dependencias
+- [ ] Adicionar `streamlit>=1.35.0` ao `requirements.txt`
+- [ ] Adicionar `plotly>=5.20.0` ao `requirements.txt`
+
+### 1.5c.6 Testes
+- [ ] `tests/test_hitl.py`: HITLAutoApprove, PedidoAprovacao, DecisaoHumana
+- [ ] `tests/test_hitl_json.py`: gerar JSON, ler decisao, timeout, cleanup
+- [ ] Teste manual: rodar `streamlit run app_streamlit.py` e verificar telas
+
+---
+
+## Fase 1.6 - Dominion expandido (analises avancadas)
+
+Analises multi-dimensionais que vao ALEM do que a Fase 1.5b cobre.
+
+Nota: a Fase 1.5b ja implementa as analises basicas (sellout, sellin, DOI simples).
+A Fase 1.6 adiciona analises **temporais, comparativas e de tendencia** que nao
+existem na 1.5b.
+
+### 1.6.1 Analises temporais e comparativas
+Em `tools_parametrizadas.py` (mesmo arquivo da 1.5b):
+- [ ] `analisar_tendencia(df, mapa, janela=4) -> dict` -- tendencia por SKU nas ultimas N semanas
+- [ ] `analisar_aceleracao_canal(df, mapa) -> dict` -- variacao da taxa de crescimento por canal
+- [ ] `analisar_desequilibrio_siso(df, mapa) -> dict` -- sell-in vs sell-out por SKU (ratio)
+- [ ] `analisar_ruptura_projetada(df, mapa) -> dict` -- projeta data de ruptura com base em DOI e sell-out
 
 ### 1.6.2 Sinais enriquecidos
-- [ ] Sinal com campo `canal` real (nao generico)
+Em `sinais.py`:
 - [ ] Sinal com campo `tendencia` (crescente/decrescente/estavel)
-- [ ] Sinal com campo `semanas_consecutivas`
+- [ ] Sinal com campo `semanas_consecutivas` (quantas semanas seguidas em desvio)
+- [ ] Sinal com campo `taxa_variacao` (aceleracao/desaceleracao)
 
-### 1.6.3 Tools adicionais
-- [ ] analisar_desvio_plano()
-- [ ] analisar_canal()
-- [ ] analisar_ruptura_doi()
-- [ ] analisar_tendencia()
+### 1.6.3 Diferenca entre 1.5b e 1.6
+
+| Analise | 1.5b | 1.6 |
+|---|---|---|
+| Desvio sell-out vs plano (snapshot) | Sim | - |
+| Desvio sell-in vs plano (snapshot) | Sim | - |
+| DOI vs politica (snapshot) | Sim | - |
+| Tendencia temporal por SKU | - | Sim |
+| Aceleracao/desaceleracao de canal | - | Sim |
+| Desequilibrio sell-in vs sell-out | - | Sim |
+| Ruptura projetada (forecast) | - | Sim |
+| Semanas consecutivas em desvio | - | Sim |
 
 ---
 
@@ -181,14 +369,15 @@ Analises multi-dimensionais alinhadas a apresentacao EY.
 
 ---
 
-## Fase 1.8 - UI minima
+## Fase 1.8 - UI avancada (pos-demo)
 
-Interface para human-in-the-loop.
+Melhorias na interface Streamlit apos validacao da demo.
 
-- [ ] Definir formato: CLI interativo, web simples (Streamlit), ou API REST
-- [ ] Cards de proposicao com contexto completo
-- [ ] Botoes aprovar / rejeitar / pedir mais contexto
-- [ ] Historico de decisoes do usuario persistido
+- [ ] Multiusuario com autenticacao basica
+- [ ] Historico de decisoes do usuario persistido em banco
+- [ ] Dashboard de KPIs com graficos Plotly
+- [ ] Notificacoes quando pipeline conclui
+- [ ] Modo comparativo: multiplas rodadas do pipeline
 
 ---
 
@@ -242,7 +431,9 @@ Multi-fonte, qualidade e reconciliacao.
 | 0 | Harness roda end-to-end com dados simulados |
 | 1 MVP | Nexus roda com validador + critic + fila com flags |
 | 1.0 | Bugs de parsing corrigidos, retry no agent, testes passando |
-| 1.5 | DataShield le xlsx real e usuario confirma schema |
+| 1.5 | DataShield le csv/xlsx real e usuario confirma schema via HITL |
+| 1.5b | Pipeline roda com CSV Mondelez real (tools parametrizadas) |
+| 1.5c | Demo EY funciona com Streamlit (upload, mapeamento, fila, audit) |
 | 1.6 | Dominion detecta DOI, canal, tendencia |
 | 1.7 | Optimus gera 5 tipos de proposicao EY |
 | 2 | Multi-fonte com qualidade e reconciliacao |
@@ -256,6 +447,8 @@ Multi-fonte, qualidade e reconciliacao.
 | 0-1 | openai, pandas, python-dotenv |
 | 1.0 | pytest |
 | 1.5 | openpyxl (xlsx) |
+| 1.5b | - (usa dependencias existentes) |
+| 1.5c | streamlit, plotly |
 | 1.6-1.7 | - |
-| 1.8 | streamlit ou fastapi (a definir) |
+| 1.8 | - (melhorias sobre Streamlit existente) |
 | 2 | kedro, agent-framework, openpyxl |

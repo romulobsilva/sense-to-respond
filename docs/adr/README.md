@@ -91,6 +91,11 @@ A decisao foi descartada e nao deve guiar implementacao.
 | ADR-0016 | Bridge Fora do MVP                                        | Aceito   | Execucao operacional fica para fase futura             |
 | ADR-0017 | MOE e Consenso Apenas em Fase Futura                      | Aceito   | Roteamento dinamico e consenso fora do MVP             |
 | ADR-0018 | DataShield Lite Nao Substitui Governanca de Dados         | Aceito   | DataShield Lite e limitado ao MVP                      |
+| ADR-0019 | Dados Reais Mondelez Substituem Simulados no Dominion     | Aceito   | CSV real com tools parametrizadas                      |
+| ADR-0020 | DataShield com 3 Niveis de Adaptacao                      | Aceito   | Mapeamento, ETL gerado, diagnostico incompatibilidade  |
+| ADR-0021 | LLM Pode Gerar ETL mas Nao Metrica                       | Aceito   | Fronteira: ETL permitido, calculo de negocio proibido  |
+| ADR-0022 | HITL via Protocolo Abstrato com Streamlit                 | Aceito   | InterfaceHITL plugavel, demo com Streamlit             |
+| ADR-0023 | Comunicacao Pipeline-UI via JSON                          | Aceito   | Arquivos JSON em approvals/ para HITL assincrono       |
 
 ---
 
@@ -122,6 +127,9 @@ ADR-0005 - DataShield Lite antes do Dominion
 ADR-0009 - DataShield Nao Envia Dataset Completo ao LLM
 ADR-0013 - Dominion Executa Apenas Analises Compativeis com os Dados
 ADR-0018 - DataShield Lite Nao Substitui Governanca de Dados
+ADR-0019 - Dados Reais Mondelez Substituem Simulados no Dominion
+ADR-0020 - DataShield com 3 Niveis de Adaptacao
+ADR-0021 - LLM Pode Gerar ETL mas Nao Metrica
 ```
 
 Essas decisoes deixam claro que DataShield Lite:
@@ -130,7 +138,9 @@ Essas decisoes deixam claro que DataShield Lite:
 * usa LLM apenas para inferencia semantica;
 * nao envia dataset completo ao LLM;
 * nao substitui governanca corporativa completa;
-* deve produzir dataset canonico antes do Dominion.
+* deve produzir dataset canonico antes do Dominion;
+* opera em 3 niveis (mapeamento, ETL, diagnostico);
+* pode gerar scripts ETL (nao metricas) com revisao humana.
 
 ---
 
@@ -145,9 +155,30 @@ ADR-0007 - Guardrails em Tres Camadas
 ADR-0011 - Prompts com JSON Validado, Retry e Fallback
 ADR-0012 - Auditoria sem Dados Sensiveis
 ADR-0014 - Output com Evidencias, Disclaimer e Revisao
+ADR-0021 - LLM Pode Gerar ETL mas Nao Metrica
 ```
 
 Essas decisoes garantem que o LLM seja usado como componente controlado, nao como executor livre.
+
+---
+
+## 7b. ADRs relacionadas ao HITL
+
+As ADRs ligadas ao human-in-the-loop sao:
+
+```text
+ADR-0008 - Human-in-the-Loop Obrigatorio no MVP
+ADR-0015 - UI MVP Aprova/Rejeita, mas Nao Executa
+ADR-0022 - HITL via Protocolo Abstrato com Streamlit
+ADR-0023 - Comunicacao Pipeline-UI via JSON
+```
+
+Essas decisoes definem que:
+
+* o humano decide antes de qualquer acao operacional;
+* a interface usa protocolo abstrato com implementacoes plugaveis;
+* a comunicacao pipeline-UI e via arquivos JSON auditaveis;
+* a demo EY usa Streamlit como interface visual.
 
 ---
 

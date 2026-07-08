@@ -37,6 +37,8 @@ Todos os prompts devem respeitar:
 11. Falhas de JSON devem ter retry limitado.
 12. Depois dos retries, deve haver fallback seguro.
 13. Mudancas de prompt devem ser testadas.
+14. O LLM pode gerar scripts ETL (rename, groupby, merge) mas nao scripts de metricas (ADR-0021).
+15. Scripts ETL gerados devem passar por revisao humana antes de execucao.
 
 ---
 
@@ -234,12 +236,22 @@ Campos obrigatorios:
 | `acao`          | `str` | Deve estar na whitelist ou ser `fim` |
 | `justificativa` | `str` | Frase curta, sem numeros inventados  |
 
-Whitelist atual:
+Whitelist atual (dados simulados):
 
 ```text id="m3u092"
 carregar_dados
 validar_demanda
 validar_custos
+fim
+```
+
+Whitelist planejada (dados reais Mondelez - ADR-0019):
+
+```text
+carregar_csv
+analisar_sellout
+analisar_sellin
+analisar_doi
 fim
 ```
 
@@ -689,6 +701,105 @@ warnings nao lista
 retry
 fallback
 ```
+
+---
+
+## 8b. Prompt planejado: `datashield.gerar_script_etl` (ADR-0021)
+
+### 8b.1 Identificacao
+
+```text
+prompt_name: datashield.gerar_script_etl
+prompt_version: 0.1.0
+arquivo planejado: datashield.py
+funcao planejada: gerar_script_etl
+tipo: geracao de ETL
+status: planejado
+```
+
+---
+
+### 8b.2 Objetivo
+
+Gerar script Python/pandas para adequar a estrutura de um dataset ao schema canonico.
+O script deve conter apenas operacoes de ETL (rename, groupby, merge, fillna, drop, astype).
+O script NAO pode conter calculos de metricas de negocio.
+
+---
+
+### 8b.3 Entrada permitida
+
+```text
+nomes de colunas do dataset
+tipos inferidos
+schema canonico esperado
+diagnostico de gaps (quais campos faltam, quais sobram)
+amostra limitada de valores
+```
+
+O prompt nao pode receber:
+
+```text
+dataset completo
+dados sensiveis integrais
+```
+
+---
+
+### 8b.4 Saida esperada
+
+```text
+{
+  "script": "def adequar_dataset(df):\n    df = df.rename(columns={...})\n    ...\n    return df",
+  "operacoes": ["rename", "groupby", "drop"],
+  "confianca": 0.85,
+  "warnings": ["Coluna X nao tem equivalente no schema canonico"],
+  "campos_ausentes": ["doi_actual", "sellin_plan"]
+}
+```
+
+---
+
+### 8b.5 Proibicoes
+
+O LLM nao pode gerar script que:
+
+```text
+calcule desvio percentual
+calcule impacto financeiro
+calcule DOI
+calcule tendencia
+calcule score
+use formulas de negocio
+acesse rede ou disco fora do sandbox
+importe modulos alem de pandas e numpy
+```
+
+### 8b.6 Whitelist de operacoes pandas
+
+```text
+rename
+groupby
+agg
+merge
+fillna
+drop
+astype
+pivot_table
+melt
+select (df[colunas])
+copy
+sort_values
+reset_index
+```
+
+### 8b.7 Garantias
+
+1. Script gerado deve passar por revisao humana (HITL)
+2. Script executado em sandbox
+3. Validacao estatica: verificar que nao contem operacoes proibidas
+4. Schema checker pos-execucao: verificar formato do output
+5. Script salvo com hash e timestamp para auditoria
 
 ---
 

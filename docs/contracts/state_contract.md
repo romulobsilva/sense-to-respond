@@ -59,18 +59,29 @@ Estas regras nao podem ser quebradas sem mudanca previa de arquitetura.
 
 ---
 
-## 4. Campos planejados para DataShield Lite
+## 4. Campos para DataShield Lite (ADR-0019, ADR-0020)
 
-Quando DataShield Lite for implementado, o state deve incluir os campos abaixo.
+| Campo | Tipo esperado | Escrito por | Lido por | Observacao |
+| --- | --- | --- | --- | --- |
+| `datashield` | `DataShieldResult` ou `None` | DataShield | Nexus/Dominion | Resultado consolidado da etapa |
+| `schema_confirmado` | `bool` | DataShield/HITL | Nexus/Dominion | Dominion nao deve rodar com arquivo real se `False` |
+| `dataset_canonico` | `pd.DataFrame` ou `None` | DataShield | Dominion | Dataset normalizado |
+| `dataset_csv` | `pd.DataFrame` ou `None` | DataShield | DataShield/Dominion | Dataset bruto carregado do CSV |
+| `mapa_semantico` | `SemanticMap` ou `None` | DataShield | Dominion/Nexus | Mapeamento de colunas |
+| `perfil_dados` | `DataProfile` ou `None` | DataShield | Nexus | Perfil estatistico das colunas |
+| `templates_mapeamento` | `list[str]` | DataShield | DataShield/Nexus | Caminhos ou ids de templates reutilizaveis |
+| `nivel_adaptacao` | `int` (1, 2 ou 3) | DataShield | Nexus/Auditoria | Nivel de adaptacao usado (ADR-0020) |
+| `capacidades` | `list[str]` | Dominion | Dominion/Nexus | Analises possiveis com os dados disponiveis |
+| `script_etl_gerado` | `str` ou `None` | DataShield | HITL/Nexus | Script ETL gerado pelo LLM (Nivel 2) |
+| `script_etl_aprovado` | `bool` | HITL | DataShield/Nexus | Se o humano aprovou o script ETL |
+| `diagnostico_incompatibilidade` | `dict` ou `None` | DataShield | HITL/Nexus | Diagnostico de gaps (Nivel 3) |
 
-| Campo                  | Tipo esperado     | Escrito por       | Lido por         | Observacao                                          |                                |
-| ---------------------- | ----------------- | ----------------- | ---------------- | --------------------------------------------------- | ------------------------------ |
-| `datashield`           | `DataShieldResult | None`             | DataShield       | Nexus/Dominion                                      | Resultado consolidado da etapa |
-| `schema_confirmado`    | `bool`            | DataShield/Humano | Nexus/Dominion   | Dominion nao deve rodar com arquivo real se `False` |                                |
-| `dataset_canonico`     | `pd.DataFrame     | None`             | DataShield       | Dominion                                            | Dataset normalizado            |
-| `mapa_semantico`       | `SemanticMap      | None`             | DataShield       | Dominion/Nexus                                      | Mapeamento de colunas          |
-| `perfil_dados`         | `DataProfile      | None`             | DataShield       | Nexus                                               | Perfil estatistico das colunas |
-| `templates_mapeamento` | `list[str]`       | DataShield        | DataShield/Nexus | Caminhos ou ids de templates reutilizaveis          |                                |
+## 4b. Campos para HITL (ADR-0022, ADR-0023)
+
+| Campo | Tipo esperado | Escrito por | Lido por | Observacao |
+| --- | --- | --- | --- | --- |
+| `hitl_pendentes` | `list[PedidoAprovacao]` | Nexus/DataShield | HITL/UI | Pedidos de aprovacao pendentes |
+| `hitl_resolvidos` | `list[PedidoAprovacao]` | HITL/UI | Nexus/Auditoria | Decisoes humanas com timestamp e autor |
 
 ---
 
@@ -158,13 +169,26 @@ Campos futuros recomendados:
 
 ```text
 periodo
+pais
 regiao
+canal
 categoria
+marca
 cliente
 dimensoes
 tendencia
 semanas_consecutivas
 origem_resultado
+```
+
+Novos tipos de sinal (dados reais Mondelez - ADR-0019):
+
+```text
+desvio_sellout
+desvio_sellin
+doi_fora_politica
+estoque_acima_cobertura
+tendencia_sellout
 ```
 
 Regras:
@@ -193,6 +217,15 @@ impacto_calculado
 urgencia_horas
 skus
 evidencias
+```
+
+Novos tipos de proposicao (dados reais Mondelez - ADR-0019):
+
+```text
+ajustar_plano_sellout
+ajustar_plano_sellin
+rebalancear_estoque_doi
+investigar_desvio_canal
 ```
 
 Regras:

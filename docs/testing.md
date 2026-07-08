@@ -351,6 +351,7 @@ canonical_name invalido
 confidence fora da faixa
 metricas vazias
 warnings nao lista
+colunas extras nao mapeadas
 ```
 
 Resultado esperado:
@@ -359,7 +360,29 @@ Resultado esperado:
 * schema ambiguo pede confirmacao humana;
 * JSON invalido dispara retry;
 * colunas inexistentes bloqueiam normalizacao;
-* confidence baixo bloqueia avanco automatico.
+* confidence baixo bloqueia avanco automatico;
+* colunas extras sao listadas em warnings.
+
+### 6.5 Prompt futuro `datashield.gerar_script_etl` (ADR-0021)
+
+Testar com mock:
+
+```text
+Script com apenas operacoes ETL permitidas
+Script com calculo de desvio percentual (proibido)
+Script com calculo de DOI (proibido)
+Script com import de modulo nao permitido
+Script vazio
+JSON invalido
+```
+
+Resultado esperado:
+
+* scripts com operacoes ETL permitidas passam;
+* scripts com calculos de metricas sao rejeitados;
+* scripts com imports proibidos sao rejeitados;
+* JSON invalido dispara retry;
+* script vazio retorna fallback seguro.
 
 ---
 
@@ -388,6 +411,29 @@ validar_custos
 ```
 
 ---
+
+### 7.1b Tools parametrizadas (ADR-0019)
+
+Toda tool parametrizada deve testar:
+
+```text
+entrada valida com mapa completo
+entrada valida com mapa parcial (campos faltando)
+DataFrame vazio
+DataFrame com colunas erradas
+mapa com campo inexistente no DataFrame
+resultado deterministico reproduzivel
+sem chamada LLM
+```
+
+Exemplos planejados:
+
+```text
+analisar_sellout(df, mapa)
+analisar_sellin(df, mapa)
+analisar_doi(df, mapa)
+detectar_capacidades(mapa)
+```
 
 ### 7.2 Tool de IO
 
@@ -557,24 +603,44 @@ sem Optimus/Critic/Nexus completo
 
 ---
 
-### 11.3 E2E futuro com arquivo real
+### 11.3 E2E futuro com CSV Mondelez (ADR-0019)
 
 Comando planejado:
 
 ```bash
-python main.py --modo nexus --input exemplos/sellout_simples.csv
+python main.py --modo nexus --input data/mondelez_s2r_base_diaria.csv
 ```
 
 Validar:
 
 ```text
-DataShield le arquivo
+DataShield le arquivo CSV
 perfil de dados e gerado
-mapa semantico inferido
-schema confirmado
+mapa semantico inferido (confianca > 0.90 para Mondelez)
+schema confirmado via HITL
 dataset canonico criado
-Dominion roda sobre dataset canonico
+capacidades detectadas (sellout, sellin, doi)
+Dominion roda tools parametrizadas sobre dataset canonico
+sinais de tipo desvio_sellout, desvio_sellin, doi_fora_politica
+Optimus gera proposicoes com novos tipos
 handoff DataShield -> Dominion registrado
+```
+
+### 11.4 E2E futuro com Streamlit (ADR-0022)
+
+Comando planejado:
+
+```bash
+HITL_MODE=auto python main.py --modo nexus --input data/mondelez_s2r_base_diaria.csv
+```
+
+Validar com HITLAutoApprove:
+
+```text
+Pipeline roda sem intervencao humana
+Arquivos JSON de aprovacao gerados em approvals/
+Decisoes registradas na auditoria
+Fila Nexus montada normalmente
 ```
 
 ---
@@ -644,13 +710,32 @@ confidence baixa
 source_column inexistente
 ```
 
-### 13.4 Confirmacao humana
+### 13.4 Confirmacao humana (ADR-0022)
 
 ```text
-usuario confirma
-usuario rejeita
+usuario confirma via HITLTerminal
+usuario rejeita via HITLTerminal
+HITLAutoApprove aprova automaticamente (testes)
+HITLStreamlit gera e consome JSON (integracao)
 modo no-interactive com confidence alta
 modo no-interactive com confidence baixa
+```
+
+### 13.6 Niveis de adaptacao (ADR-0020)
+
+```text
+Nivel 1: CSV com colunas claras (Mondelez) -> mapeamento puro
+Nivel 2: CSV com nomes diferentes -> ETL gerado e aprovado
+Nivel 3: CSV incompativel -> diagnostico retornado, pipeline parcial
+```
+
+### 13.7 Script ETL gerado (ADR-0021)
+
+```text
+script com operacoes ETL permitidas -> aprovado
+script com calculo de metrica -> rejeitado pela validacao estatica
+script aprovado executado em sandbox -> output valido
+script aprovado executado em sandbox -> schema checker passa
 ```
 
 ### 13.5 Normalizacao
@@ -660,6 +745,46 @@ renomeia colunas corretamente
 preserva colunas auxiliares
 bloqueia coluna inexistente
 bloqueia mapa semantico invalido
+```
+
+---
+
+## 13b. Testes de HITL (ADR-0022, ADR-0023)
+
+### 13b.1 Protocolo abstrato
+
+```text
+HITLAutoApprove: pipeline roda sem intervencao
+HITLTerminal com mock de input(): decisoes corretas
+InterfaceHITL: qualquer implementacao funciona com Nexus
+```
+
+### 13b.2 Arquivos JSON de aprovacao
+
+```text
+JSON gerado com todos os campos obrigatorios
+JSON com decisao preenchida e lida pelo pipeline
+JSON com decisao rejeitada e pipeline para
+Timeout de polling (limite maximo de espera)
+Cleanup de arquivos antigos
+Sem dados sensiveis nos JSONs
+```
+
+### 13b.3 Streamlit (integracao)
+
+```text
+Streamlit le pedidos pendentes de approvals/
+Streamlit grava decisao no JSON
+Pipeline detecta decisao e continua
+Multiplos pedidos em sequencia
+```
+
+Arquivos de teste sugeridos:
+
+```text
+test_hitl.py
+test_hitl_json.py
+test_hitl_streamlit.py (integracao)
 ```
 
 ---
@@ -727,6 +852,7 @@ test_guardrails.py
 test_agent_decision.py
 test_critic.py
 test_tools.py
+test_tools_parametrizadas.py
 test_state_types.py
 test_sinais.py
 test_optimus.py
@@ -734,6 +860,9 @@ test_validator.py
 test_nexus_pipeline.py
 test_datashield_tools.py
 test_datashield_schema.py
+test_datashield_etl.py
+test_hitl.py
+test_hitl_json.py
 ```
 
 ---
@@ -761,6 +890,9 @@ sellout_simples.csv
 sellout_schema_ambiguo.csv
 demanda_custos_basico.csv
 arquivo_vazio.csv
+mondelez_ficticio.csv (mesmas colunas do real, dados fake)
+nielsen_incompativel.csv (para testar Nivel 3)
+espanhol_nomes_diferentes.csv (para testar Nivel 2)
 ```
 
 ---

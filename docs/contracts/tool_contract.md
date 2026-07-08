@@ -41,10 +41,16 @@ ler_arquivo
 gerar_perfil_dataframe
 inferir_mapa_semantico
 normalizar_dataset
+detectar_capacidades
+analisar_sellout
+analisar_sellin
+analisar_doi
 analisar_desvio_plano
 analisar_desequilibrio_canal
 analisar_ruptura_doi
 analisar_tendencia
+gerar_script_etl
+executar_script_etl_aprovado
 ```
 
 ---
@@ -100,6 +106,7 @@ Exemplos planejados:
 ```text id="8vfj8h"
 inferir_mapa_semantico
 classificar_intencao
+gerar_script_etl
 ```
 
 Regras:
@@ -111,6 +118,8 @@ Regras:
 * Deve registrar prompt version, modelo e schema.
 * Deve enviar apenas contexto minimo necessario.
 * Deve evitar dados sensiveis e datasets completos.
+* Para `gerar_script_etl`: script gerado deve conter apenas operacoes ETL (ADR-0021).
+* Scripts gerados devem passar por revisao humana antes de execucao.
 
 ---
 
@@ -227,6 +236,8 @@ validar_mapa_semantico
 normalizar_dataset
 salvar_template_mapeamento
 carregar_template_mapeamento
+gerar_script_etl
+executar_script_etl_aprovado
 ```
 
 Responsabilidade:
@@ -244,6 +255,28 @@ Nao deve:
 gerar proposicoes
 calcular decisoes
 executar acoes operacionais
+gerar scripts com calculos de metricas (ADR-0021)
+```
+
+### 6.1b DataShield - Niveis de adaptacao (ADR-0020)
+
+```text
+Nivel 1: mapeamento puro
+  Tools: inferir_mapa_semantico, validar_mapa_semantico, normalizar_dataset
+  LLM: retorna JSON de mapeamento
+  Humano: confirma mapeamento
+
+Nivel 2: ETL gerado
+  Tools: gerar_script_etl, executar_script_etl_aprovado
+  LLM: gera script Python (apenas operacoes ETL)
+  Humano: revisa e aprova script
+  Sandbox: executa script aprovado
+  Whitelist pandas: rename, groupby, merge, fillna, drop, astype, pivot_table
+
+Nivel 3: diagnostico
+  Tools: inferir_mapa_semantico (retorna diagnostico)
+  LLM: identifica incompatibilidade
+  Humano: decide se prossegue
 ```
 
 ---
@@ -258,15 +291,33 @@ validar_demanda
 validar_custos
 ```
 
-Tools planejadas:
+Tools planejadas (ADR-0019):
 
 ```text id="nl67cy"
+detectar_capacidades
+analisar_sellout
+analisar_sellin
+analisar_doi
 analisar_desvio_plano
 analisar_desequilibrio_canal
 analisar_ruptura_doi
 analisar_tendencia
 analisar_aceleracao_canal
 ```
+
+Assinatura parametrizada (ADR-0019):
+
+```python
+def analisar_sellout(df: pd.DataFrame, mapa: dict) -> dict:
+    ...
+
+def detectar_capacidades(mapa: dict) -> list[str]:
+    ...
+```
+
+As tools parametrizadas recebem `df` e `mapa` como argumentos em vez de
+assumir nomes fixos de colunas. Isso permite reutilizar a mesma tool
+para datasets com nomes de colunas diferentes.
 
 Responsabilidade:
 

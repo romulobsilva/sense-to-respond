@@ -17,6 +17,8 @@ IA = LLM + Harness
 - O LLM decide proximo passo e gera narrativa.
 - O harness controla loop, tools, guardrails, memoria, auditoria e confianca.
 - Numeros sao SEMPRE calculados por tools deterministicas (Python/pandas). LLM nunca calcula.
+- O LLM pode gerar scripts de ETL (rename, groupby, merge) mas nao scripts de metricas (ADR-0021).
+- O humano decide antes de qualquer acao operacional (HITL obrigatorio).
 
 ## 2. Componentes do MVP
 
@@ -31,7 +33,10 @@ IA = LLM + Harness
 | **Guardrails** | `guardrails.py` | Input/output guardrails, fila com flags |
 | **Auditoria** | `audit.py` | Trilha de eventos timestamped |
 | **Config** | `config.py`, `.env` | Parametros (modelo, limiar, retries) |
+| **HITL** | `hitl.py` | Protocolo abstrato de aprovacao humana (ADR-0022) |
+| **DataShield** | `datashield.py` | Leitura, mapeamento semantico, ETL, normalizacao |
 | **Entrada** | `main.py` | CLI com modos `nexus` e `legado` |
+| **UI Demo** | `app_streamlit.py` | Interface Streamlit para demo EY (ADR-0022) |
 
 ## 3. Pipeline MVP
 
@@ -39,16 +44,25 @@ IA = LLM + Harness
 Input Guardrail (anti-injecao, tamanho)
   |
   v
-Dominion (loop LLM + tools deterministicas)
-  |-- carregar_dados
-  |-- validar_demanda
-  |-- validar_custos
+DataShield Lite (3 niveis de adaptacao - ADR-0020)
+  |-- Nivel 1: mapeamento semantico (LLM infere, humano confirma)
+  |-- Nivel 2: ETL gerado (LLM gera script, humano revisa, sandbox executa)
+  |-- Nivel 3: diagnostico de incompatibilidade (humano decide)
+  |-- HITL: aprovacao via protocolo abstrato (ADR-0022)
   |
   v
-Sinais estruturados (SIG-DEM-001, SIG-CUS-004, etc.)
+Dominion (tools deterministicas parametrizadas)
+  |-- detectar_capacidades(mapa)
+  |-- analisar_sellout(df, mapa)
+  |-- analisar_sellin(df, mapa)
+  |-- analisar_doi(df, mapa)
+  |-- (roda apenas analises compativeis com dados disponiveis - ADR-0013)
   |
   v
-Optimus (proposicoes P1, P2, P3 deterministicas)
+Sinais estruturados (desvio_sellout, desvio_sellin, doi_fora_politica, etc.)
+  |
+  v
+Optimus (proposicoes deterministicas por impacto financeiro)
   |
   v
 Validador deterministico
@@ -69,12 +83,21 @@ Retry Optimus (max 1x se validador ou critic falhar)
   v
 Fila Nexus (ranqueada por impacto R$ e urgencia horas)
   |-- Flag REVISAO OBRIGATORIA se confianca < limiar
+  |-- HITL: aprovacao via Streamlit ou terminal (ADR-0022)
   |
   v
 Output Guardrail (disclaimer + citacoes)
   |
   v
 Usuario decide (sem Bridge/ERP no MVP)
+```
+
+### 3.1 Modo legado (sem DataShield)
+
+Quando nenhum arquivo e fornecido, o pipeline usa dados simulados em memoria:
+
+```
+Input Guardrail -> Dominion (dados simulados) -> Sinais -> Optimus -> ... -> Usuario
 ```
 
 ## 4. State compartilhado (blackboard)
@@ -86,12 +109,18 @@ Sem conversa livre entre LLMs.
 |---|---|---|
 | `pergunta` | Nexus | Dominion |
 | `dados` | Dominion (tools) | Dominion, Sinais |
+| `dataset_csv` | DataShield | Dominion |
+| `mapa_semantico` | DataShield | Dominion, Nexus |
+| `schema_confirmado` | DataShield/HITL | Nexus, Dominion |
+| `capacidades` | Dominion | Dominion, Nexus |
+| `nivel_adaptacao` | DataShield | Nexus, Auditoria |
+| `script_etl_aprovado` | DataShield/HITL | Dominion |
 | `resultados` | Dominion (tools) | Sinais, Optimus |
 | `sinais[]` | Sinais | Optimus, Critic |
 | `proposicoes[]` | Optimus | Validador, Critic, Fila |
 | `validacao` | Validador | Nexus |
 | `critica` | Critic | Nexus, Fila |
-| `fila_nexus[]` | Guardrails | main.py (CLI) |
+| `fila_nexus[]` | Guardrails | main.py (CLI), Streamlit |
 | `handoffs[]` | Nexus | Auditoria |
 | `auditoria` | Audit | main.py (JSON) |
 
@@ -117,6 +146,8 @@ Sem conversa livre entre LLMs.
 
 ## 6. Tipos de decisao MVP (whitelist)
 
+### 6.1 Tipos originais (dados simulados)
+
 - `rebalancear_estoque`
 - `priorizar_skus`
 - `ajustar_cobertura`
@@ -124,6 +155,13 @@ Sem conversa livre entre LLMs.
 - `gerenciar_falta_excesso`
 - `ajustar_custo`
 - `ajustar_demanda`
+
+### 6.2 Tipos adicionais (dados reais Mondelez - ADR-0019)
+
+- `ajustar_plano_sellout`
+- `ajustar_plano_sellin`
+- `rebalancear_estoque_doi`
+- `investigar_desvio_canal`
 
 ## 7. Configuracao (.env)
 
@@ -133,20 +171,23 @@ Sem conversa livre entre LLMs.
 | `OPENAI_MODEL` | `gpt-4o-mini` | Modelo LLM |
 | `LIMIAR_CONFIANCA_CRITIC` | `0.7` | Abaixo disso: revisao obrigatoria |
 | `MAX_OPTIMUS_RETRIES` | `1` | Retries do Optimus (0 a 3) |
+| `HITL_MODE` | `terminal` | Interface HITL: `terminal`, `arquivo`, `streamlit`, `auto` |
+| `STREAMLIT_PORT` | `8501` | Porta do Streamlit quando HITL_MODE=streamlit |
 
 ## 8. O que NAO esta implementado
 
-| Componente | Status | Fase |
-|---|---|---|
-| DataShield Lite (xlsx/csv + LLM schema) | Planejado | MVP proximo passo |
-| Kedro pipelines | Planejado | MVP/Fase 2 |
-| Microsoft Agent Framework | Planejado | Fase 2 |
-| Upload de arquivo real | Planejado | MVP proximo passo |
-| UI cards aprovar/rejeitar | Planejado | MVP proximo passo |
-| Dominion completo EY (DOI, ruptura, canal) | Planejado | Fase 2 |
-| Bridge (execucao ERP/WMS) | Planejado | Fase 4 |
-| MOE router dinamico | Planejado | Fase 2/3 |
-| Consenso multi-agente | Planejado | Fase 3 |
+| Componente | Status | Fase | ADR |
+|---|---|---|---|
+| DataShield Lite (3 niveis) | Planejado | Fase 1.5 | ADR-0020 |
+| HITL Streamlit (demo EY) | Planejado | Fase 1.5c | ADR-0022 |
+| Tools parametrizadas Mondelez | Planejado | Fase 1.5b | ADR-0019 |
+| Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |
+| Dominion expandido (DOI, canal) | Planejado | Fase 1.6 | - |
+| Kedro pipelines | Planejado | Fase 2 | - |
+| Microsoft Agent Framework | Planejado | Fase 2 | - |
+| Bridge (execucao ERP/WMS) | Planejado | Fase 4 | ADR-0016 |
+| MOE router dinamico | Planejado | Fase 2/3 | ADR-0017 |
+| Consenso multi-agente | Planejado | Fase 3 | ADR-0017 |
 
 ## 9. Contexto de negocio
 
@@ -158,7 +199,7 @@ Sem conversa livre entre LLMs.
 
 ## 10. Decisoes arquiteturais registradas
 
-Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0018). Resumo:
+Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0023). Resumo:
 
 | ADR | Decisao | Motivo |
 |---|---|---|
@@ -180,6 +221,11 @@ Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0018). Resumo:
 | 0016 | Bridge fora do MVP | Escopo controlado |
 | 0017 | MOE e consenso apenas fase futura | Complexidade prematura |
 | 0018 | DataShield Lite nao substitui governanca | Auditoria de schema |
+| 0019 | Dados reais Mondelez substituem simulados | Tools parametrizadas, CSV real |
+| 0020 | DataShield com 3 niveis de adaptacao | Mapeamento, ETL gerado, diagnostico |
+| 0021 | LLM pode gerar ETL mas nao metrica | Fronteira ETL vs calculo de negocio |
+| 0022 | HITL via protocolo abstrato com Streamlit | InterfaceHITL plugavel, demo EY |
+| 0023 | Comunicacao pipeline-UI via JSON | Arquivos JSON em approvals/ |
 
 ## 11. Documentos de referencia
 
@@ -193,3 +239,103 @@ Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0018). Resumo:
 | Agent log | `docs/agent.log.md` | Historico de sessoes de desenvolvimento |
 | Rules | `rules.md` | Regras de desenvolvimento e spec-driven |
 | Cursor rules | `.cursor/rules/spec-driven-dev.mdc` | Regra automatica para Cursor IDE |
+
+## 12. Schema canonico Mondelez (ADR-0019)
+
+Colunas esperadas no dataset canonico apos DataShield normalizar o CSV:
+
+| Campo canonico | Tipo | Descricao |
+|---|---|---|
+| `date` | date | Data do registro |
+| `country` | str | Pais (Brazil, Mexico, Colombia, Peru, Chile) |
+| `channel` | str | Canal (Modern Trade, Traditional, E-commerce, Wholesale) |
+| `category` | str | Categoria (Chocolates, Biscuits, Gum, Beverages) |
+| `brand` | str | Marca (Lacta, Oreo, Trident, Tang) |
+| `sku_code` | str | Codigo do SKU |
+| `sku_description` | str | Descricao do SKU |
+| `sellout_actual` | float | Sell-out real (toneladas) |
+| `sellout_plan` | float | Sell-out planejado (toneladas) |
+| `sellin_actual` | float | Sell-in real (toneladas) |
+| `sellin_plan` | float | Sell-in planejado (toneladas) |
+| `doi_actual` | float | Days of Inventory real |
+| `doi_policy` | float | Days of Inventory politica |
+| `inventory_units` | float | Estoque em unidades |
+| `sellout_actual_nr` | float | Net Revenue real (USD) |
+
+Dimensoes para agregacao: `country`, `channel`, `category`, `brand`.
+
+## 13. Arquitetura HITL (ADR-0022, ADR-0023)
+
+### 13.1 Protocolo abstrato
+
+```
+InterfaceHITL (classe abstrata)
+  |-- solicitar_aprovacao(PedidoAprovacao) -> PedidoAprovacao
+  |
+  +-- HITLTerminal       (desenvolvimento)
+  +-- HITLArquivo         (async, polling JSON)
+  +-- HITLStreamlit       (demo EY)
+  +-- HITLAutoApprove     (testes automatizados)
+```
+
+### 13.2 Momentos de interacao HITL
+
+| Momento | Tipo | Quando |
+|---|---|---|
+| M1 | mapeamento_semantico | DataShield infere mapa de colunas |
+| M2 | script_etl | DataShield Nivel 2 gera script ETL |
+| M3 | fila_nexus | Pipeline completo, usuario decide proposicoes |
+| M4 | incompatibilidade_dados | DataShield Nivel 3 detecta dataset incompativel |
+
+### 13.3 Comunicacao pipeline-UI
+
+```
+Pipeline -> gera approvals/{tipo}_{timestamp}.json (status: pendente)
+Pipeline -> polling (1s intervalo)
+Streamlit -> le JSON, exibe ao usuario
+Usuario -> decide (aprovar/rejeitar/editar/postergar)
+Streamlit -> grava decisao no JSON
+Pipeline -> detecta decisao, continua
+```
+
+### 13.4 Telas Streamlit (demo EY)
+
+1. Upload e preview do dataset
+2. Mapeamento semantico com aprovacao
+3. Progresso do pipeline em tempo real
+4. Fila Nexus com proposicoes para decisao
+5. Audit trail completo
+
+## 14. DataShield - 3 Niveis de Adaptacao (ADR-0020)
+
+```
+Nivel 1 - Mapeamento puro (90% dos casos)
+  LLM retorna JSON de mapeamento
+  Tools aplicam rename/select
+  Humano confirma
+  Nenhum codigo gerado
+
+Nivel 2 - Transformacao ETL (9% dos casos)
+  LLM gera script ETL (rename + groupby + merge)
+  Humano revisa script
+  Sandbox executa script aprovado
+  Fronteira: ETL sim, metrica nao (ADR-0021)
+
+Nivel 3 - Diagnostico (1% dos casos)
+  LLM identifica incompatibilidade
+  Retorna diagnostico + sugestao
+  Humano decide se prossegue
+  Pipeline roda parcialmente ou nao roda
+```
+
+### 14.1 Fronteira ETL vs Metrica (ADR-0021)
+
+| Operacao | Tipo | LLM pode gerar? |
+|---|---|---|
+| `df.rename(columns={...})` | ETL | Sim |
+| `df.groupby(...).agg(...)` | ETL | Sim |
+| `df.merge(...)` | ETL | Sim |
+| `df.fillna(...)` | ETL | Sim |
+| `(actual - plan) / plan * 100` | Metrica | Nao |
+| `inventory / daily_demand` | Metrica (DOI) | Nao |
+| `delta * preco_unitario` | Metrica (impacto) | Nao |

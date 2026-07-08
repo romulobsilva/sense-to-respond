@@ -183,6 +183,129 @@ Fase 2/3:
 
 ---
 
+## Sessao 7 - 2026-07-08 (manha) - Dados Mondelez e adaptacao da arquitetura
+
+### Contexto
+- Usuario forneceu 3 arquivos de dados reais Mondelez:
+  - `data/mondelez_s2r_base_diaria.csv` (1440 linhas, 25 colunas, sell-out/sell-in/DOI)
+  - `docs/S&OE - Analyst Questions Script.xlsx` (perguntas de negocio e alertas)
+  - `docs/MDLZ_SOE WACAM_Dashboard Documentacion Tecnica_v01.pdf` (modelo semantico Power BI)
+- Analise de como conectar dados reais ao pipeline existente
+- Discussao sobre adaptacao para datasets com colunas variadas
+
+### Decisoes tomadas
+- Tools de analise devem ser parametrizadas (recebem `df` e `mapa` como args)
+- Dominion detecta capacidades do dataset e roda apenas analises compativeis
+- Abordagem "semantic mapping + parameterized tools" (Opcao C) escolhida
+- Novos tipos de sinal: `desvio_sellout`, `desvio_sellin`, `doi_fora_politica`
+- Novos tipos de proposicao: `ajustar_plano_sellout`, `rebalancear_estoque_doi`
+
+### Artefatos analisados
+| Arquivo | Descricao |
+|---|---|
+| `data/mondelez_s2r_base_diaria.csv` | CSV com 25 colunas, 5 paises, 4 canais, 4 categorias |
+| `docs/S&OE - Analyst Questions Script.xlsx` | 6+ perguntas de negocio com sub-perguntas |
+| `docs/MDLZ_SOE WACAM_Dashboard...pdf` | Modelo Power BI com KPIs (STA, BEWB, DOI, DIFC) |
+
+---
+
+## Sessao 8 - 2026-07-08 (manha) - DataShield 3 niveis e ETL gerado
+
+### Contexto
+- Stress test da arquitetura: "e se o dataset tiver colunas diferentes?"
+- 3 cenarios: coluna extra (C1), nomes diferentes (C2), dataset incompativel (C3)
+
+### Decisoes tomadas
+- DataShield opera em 3 niveis progressivos de adaptacao
+- Nivel 1: mapeamento puro (JSON de/para, sem codigo gerado)
+- Nivel 2: ETL gerado (LLM gera script, humano revisa, sandbox executa)
+- Nivel 3: diagnostico de incompatibilidade (humano decide)
+- Fronteira clara: ETL permitido para LLM gerar, metrica nao
+- Whitelist de operacoes pandas para ETL: rename, groupby, merge, fillna, drop, astype
+- Scripts ETL gerados passam por revisao humana e execucao em sandbox
+
+---
+
+## Sessao 9 - 2026-07-08 (manha) - HITL com Streamlit para demo EY
+
+### Contexto
+- Discussao sobre como o humano interage concretamente com o sistema
+- 4 momentos HITL: mapeamento, script ETL, fila Nexus, incompatibilidade
+- Necessidade de interface visual para demo EY
+
+### Decisoes tomadas
+- Protocolo abstrato InterfaceHITL com implementacoes plugaveis
+- HITLTerminal (dev), HITLArquivo (async), HITLStreamlit (demo), HITLAutoApprove (testes)
+- Comunicacao pipeline-UI via arquivos JSON em approvals/
+- Streamlit escolhido para demo EY (Python puro, visual moderno)
+- 5 telas: upload, mapeamento, progresso, fila Nexus, audit trail
+- Nexus recebe hitl como dependencia injetada (sem acoplamento a UI)
+
+---
+
+## Sessao 10 - 2026-07-08 (manha) - Atualizacao de specs (spec-driven)
+
+### Contexto
+- Analise de gaps entre discussoes recentes e specs existentes
+- 53 alteracoes identificadas em 10 documentos
+- Execucao passo a passo seguindo principio spec-driven
+
+### Artefatos criados/alterados
+| Arquivo | Descricao |
+|---|---|
+| `docs/adr/0019-dados-reais-mondelez-substituem-simulados.md` | ADR: CSV real com tools parametrizadas |
+| `docs/adr/0020-datashield-tres-niveis-adaptacao.md` | ADR: mapeamento, ETL gerado, diagnostico |
+| `docs/adr/0021-llm-pode-gerar-etl-nao-metrica.md` | ADR: fronteira ETL vs calculo de negocio |
+| `docs/adr/0022-hitl-protocolo-abstrato-streamlit.md` | ADR: InterfaceHITL plugavel, demo Streamlit |
+| `docs/adr/0023-comunicacao-pipeline-ui-via-json.md` | ADR: arquivos JSON em approvals/ |
+| `docs/adr/README.md` | Indice atualizado com ADRs 0019-0023 |
+| `docs/architecture.md` | Pipeline com DataShield, HITL, schema Mondelez, 3 niveis |
+| `docs/contracts/state_contract.md` | Novos campos DataShield, HITL, capacidades |
+| `docs/contracts/tool_contract.md` | Tools parametrizadas, ETL gerado, sandbox |
+| `docs/prompts.md` | Invariante ETL, whitelist novas tools, prompt gerar_script_etl |
+| `rules.md` | Fronteira ETL/metrica, regras HITL, regras Streamlit |
+| `.cursor/rules/spec-driven-dev.mdc` | Invariante ETL, HITL, stop-and-ask atualizado |
+| `docs/planning.md` | Fase 1.0 marcada [x], novas fases 1.5b e 1.5c |
+| `docs/testing.md` | Testes HITL, tools parametrizadas, ETL, fixtures |
+| `docs/agent.log.md` | Sessoes 7-10 registradas |
+
+### Testes realizados
+- Nenhuma alteracao de codigo nesta sessao (apenas docs/specs)
+- Verificacao manual de consistencia entre documentos
+
+### Proximos passos definidos
+- [ ] Implementar DataShield Lite (Fase 1.5)
+- [ ] Implementar tools parametrizadas Mondelez (Fase 1.5b)
+- [ ] Implementar HITL + Streamlit (Fase 1.5c)
+- [ ] Criar fixtures CSV para testes
+- [ ] Adicionar pytest.ini ou pyproject.toml local
+
+---
+
+## Sessao 11 - 2026-07-08 (meio-dia) - Refinamento do planning
+
+### Contexto
+- Revisao critica do planning para verificar se esta suficiente para implementacao
+- 6 lacunas identificadas, 3 resolvidas no planning
+
+### Lacunas resolvidas
+1. **Ordem de implementacao**: adicionada secao "Ordem de implementacao das fases 1.5, 1.5b e 1.5c" com blocos A-E e dependencias claras
+2. **Arquivos afetados por item**: cada checkbox agora indica o arquivo de destino (datashield.py, tools_parametrizadas.py, hitl.py, etc.) e a assinatura da funcao
+3. **Sobreposicao 1.5b vs 1.6**: adicionada tabela comparativa explicando que 1.5b cobre analises snapshot e 1.6 cobre analises temporais/comparativas
+
+### Lacunas adiadas (just-in-time)
+4. Fixture CSV concreto -- definir ao implementar 1.5b.6
+5. Retorno concreto das tools -- definido inline no planning (estrutura do dict)
+6. Texto do system prompt -- definir ao implementar 1.5.2
+
+### Artefatos alterados
+| Arquivo | Descricao |
+|---|---|
+| `docs/planning.md` | Ordem de blocos, arquivos por item, assinaturas, retornos, desambiguacao 1.5b/1.6 |
+| `docs/agent.log.md` | Sessao 11 registrada |
+
+---
+
 ## Template para proximas sessoes
 
 ```

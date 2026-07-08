@@ -147,9 +147,39 @@ O LLM nao pode:
 * calcular metricas de qualidade;
 * calcular custo;
 * alterar resultados numericos;
-* inventar valores ausentes.
+* inventar valores ausentes;
+* gerar scripts Python que calculem metricas de negocio.
 
 Todos os numeros devem vir de tools deterministicas.
+
+### 7.1b LLM pode gerar ETL (ADR-0021)
+
+O LLM pode gerar scripts de ETL para adequar a estrutura de dados:
+
+Operacoes permitidas:
+
+* `df.rename(columns={...})`
+* `df.groupby(...).agg(...)`
+* `df.merge(...)`
+* `df.fillna(...)`
+* `df.drop(columns=[...])`
+* `df.astype(...)`
+* `df.pivot_table(...)`
+
+Operacoes proibidas em scripts gerados:
+
+* `(actual - plan) / plan * 100` (desvio percentual)
+* `inventory / daily_demand` (DOI)
+* `delta * preco_unitario` (impacto financeiro)
+* Qualquer formula de negocio ou KPI
+
+Garantias obrigatorias:
+
+* Humano revisa e aprova script antes de execucao.
+* Execucao em sandbox (sem rede, disco limitado).
+* Validacao estatica contra operacoes proibidas.
+* Schema checker pos-execucao.
+* Script salvo com hash e timestamp para auditoria.
 
 ### 7.2 MVP usa pipeline sequencial
 
@@ -310,7 +340,11 @@ Saidas JSON devem ter:
 
 ## 11. Regras de DataShield Lite
 
-DataShield Lite pode usar LLM apenas para inferencia semantica de schema.
+DataShield Lite pode usar LLM para:
+
+* inferencia semantica de schema (mapeamento de colunas);
+* geracao de scripts ETL (apenas operacoes estruturais, ADR-0021);
+* diagnostico de incompatibilidade de dados.
 
 DataShield Lite nao pode:
 
@@ -319,7 +353,8 @@ DataShield Lite nao pode:
 * prosseguir sem schema confirmado ou confidence gate aprovado;
 * enviar dataset completo ao LLM;
 * registrar dados sensiveis em logs;
-* inferir decisoes operacionais.
+* inferir decisoes operacionais;
+* gerar scripts que calculem metricas de negocio.
 
 DataShield Lite deve:
 
@@ -331,6 +366,16 @@ DataShield Lite deve:
 * normalizar dataset para schema canonico;
 * registrar handoff DataShield -> Dominion;
 * registrar eventos em auditoria.
+
+### 11.1 Niveis de adaptacao (ADR-0020)
+
+DataShield opera em 3 niveis progressivos:
+
+* **Nivel 1**: mapeamento puro (LLM retorna JSON, humano confirma, nenhum codigo gerado).
+* **Nivel 2**: ETL gerado (LLM gera script Python, humano revisa, sandbox executa).
+* **Nivel 3**: diagnostico de incompatibilidade (LLM identifica gaps, humano decide).
+
+O nivel e determinado pela confianca do mapeamento e cobertura de campos obrigatorios.
 
 ---
 
@@ -466,7 +511,9 @@ O agente deve parar e pedir confirmacao antes de:
 * implementar MOE router;
 * implementar consenso multi-agente;
 * tocar mais de 5 arquivos de codigo;
-* alterar comportamento fora do planning.
+* alterar comportamento fora do planning;
+* gerar ou executar script ETL em producao;
+* alterar protocolo HITL ou implementacoes de InterfaceHITL.
 
 ---
 
@@ -600,7 +647,46 @@ Manter curto, imperativo e abaixo de 50 linhas sempre que possivel.
 
 ---
 
-## 22. Regra final
+## 22. Regras de HITL (ADR-0022, ADR-0023)
+
+### 22.1 Protocolo abstrato
+
+O HITL usa a classe abstrata `InterfaceHITL` com implementacoes plugaveis:
+
+* `HITLTerminal`: desenvolvimento (input no terminal)
+* `HITLArquivo`: async (polling de JSON em approvals/)
+* `HITLStreamlit`: demo EY (interface web)
+* `HITLAutoApprove`: testes automatizados (aprova tudo)
+
+Nexus recebe `hitl` como dependencia injetada. Nao ha acoplamento direto a UI.
+
+### 22.2 Arquivo JSON de aprovacao
+
+Cada decisao HITL e salva em `approvals/{tipo}_{timestamp}.json` com:
+
+* `id`, `tipo`, `timestamp`, `status`
+* `dados` (detalhes do pedido)
+* `decisao` (aprovado/rejeitado/editado/postergado)
+* `comentario`, `decidido_por`, `decidido_em`
+
+### 22.3 Regras de seguranca HITL
+
+* Nao incluir dados sensiveis nos JSONs de aprovacao.
+* Nao permitir aprovacao automatica em producao (apenas em testes).
+* Registrar toda decisao HITL na auditoria.
+* Decisoes HITL sao append-only (nao apagar historico).
+
+## 23. Regras de interface Streamlit
+
+* Streamlit e apenas para demo e operacao local.
+* Pipeline e UI sao processos separados, comunicam via JSON.
+* Streamlit nao deve conter logica de negocio.
+* Streamlit nao deve calcular metricas.
+* Streamlit exibe dados que ja estao no state.
+* Cores e estilo devem seguir identidade visual EY quando aplicavel.
+* Nao expor dados sensiveis na interface.
+
+## 24. Regra final
 
 Se houver conflito entre uma sugestao do LLM e a spec, a spec vence.
 
