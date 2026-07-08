@@ -289,11 +289,6 @@ class AgenteOpenAI:
         texto = content.strip()
 
         if auditoria is not None:
-            preview_len = 200
-            preview = texto[:preview_len]
-            if len(texto) > preview_len:
-                preview = f"{preview}..."
-
             auditoria.registrar(
                 "llm_explicacao",
                 {
@@ -302,7 +297,7 @@ class AgenteOpenAI:
                     "tamanho_contexto": len(contexto_resultados),
                     "tamanho_resposta": len(texto),
                     "contexto_resultados": contexto_resultados,
-                    "resposta_preview": preview,
+                    "resposta_completa": texto,
                 },
             )
 

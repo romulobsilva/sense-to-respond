@@ -62,18 +62,24 @@ def _imprimir_resumo_auditoria(
         print(f"[{tipo}] {iter_txt} {_formatar_dados_resumo(dados)}")
 
 
+MAX_FILA_TERMINAL = 30
+
+
 def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
     """
-    Exibe fila ranqueada para decisao humana.
+    Exibe fila ranqueada para decisao humana (top-N + resumo).
     """
     if not fila:
         print("Nenhum item na fila.")
         return
 
+    total = len(fila)
+    exibir = fila[:MAX_FILA_TERMINAL]
+
     print("\n==============================")
-    print("FILA NEXUS (human-in-the-loop)")
+    print(f"FILA NEXUS - top {len(exibir)} de {total} (human-in-the-loop)")
     print("==============================")
-    for item in fila:
+    for item in exibir:
         prop = item.get("proposicao", {})
         if not isinstance(prop, dict):
             prop = {}
@@ -86,6 +92,10 @@ def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
         print(f"[{flag}] {prop_id} | {titulo} | R$ {impacto}")
         if motivo:
             print(f"  motivo: {motivo}")
+
+    if total > MAX_FILA_TERMINAL:
+        print(f"\n... +{total - MAX_FILA_TERMINAL} proposicoes omitidas. "
+              f"Consulte auditoria para lista completa.")
 
 
 def _criar_hitl(hitl_mode: str) -> InterfaceHITL:
@@ -181,17 +191,18 @@ def main() -> None:
     if isinstance(auditoria, dict):
         _imprimir_resumo_auditoria(auditoria, tipos_auditoria)
 
-    fila = resultado.get("fila_nexus", [])
-    if isinstance(fila, list):
-        _imprimir_fila_nexus(fila)
-
-    print("\n==============================")
-    print("RESPOSTA FINAL (com output guardrail)")
-    print("==============================")
+    print("\n" + "=" * 60)
+    print("  RESPOSTA FINAL (sumario executivo com output guardrail)")
+    print("=" * 60)
     resultados = resultado.get("resultados", {})
     if isinstance(resultados, dict):
         explicacao = resultados.get("explicacao", "")
         print(explicacao)
+    print("=" * 60)
+
+    fila = resultado.get("fila_nexus", [])
+    if isinstance(fila, list):
+        _imprimir_fila_nexus(fila)
 
 
 if __name__ == "__main__":
