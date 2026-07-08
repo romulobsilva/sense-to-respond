@@ -38,6 +38,12 @@ from state_types import (
     sinais_do_state,
 )
 from tools import serializar_resultados_para_llm
+from tools_parametrizadas import (
+    analisar_doi,
+    analisar_sellin,
+    analisar_sellout,
+    detectar_capacidades,
+)
 from validator import validar_proposicoes
 
 TIPOS_RESUMO_AUDITORIA = frozenset({
@@ -217,6 +223,89 @@ class Nexus:
 
         return True
 
+    def _fase_dominion_mondelez(
+        self,
+        state: Dict[str, Any],
+        auditoria: Optional[AuditTrail],
+    ) -> None:
+        """
+        Fase Dominion para dados Mondelez: chama tools parametrizadas
+        diretamente (deterministico, sem loop LLM).
+
+        Requer que DataShield ja tenha preenchido dataset_canonico e
+        mapa_semantico no state.
+        """
+        import pandas as pd
+
+        df = state.get("dataset_canonico")
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            self._log("Dominion Mondelez: dataset_canonico vazio ou ausente.")
+            return
+
+        mapa_raw = state.get("mapa_semantico", {})
+        if isinstance(mapa_raw, dict):
+            mapa = mapa_raw.get("mapa", {})
+        else:
+            mapa = {}
+        if not isinstance(mapa, dict):
+            mapa = {}
+
+        self._log("=== DOMINION MONDELEZ (tools parametrizadas) ===")
+
+        caps = detectar_capacidades(mapa)
+        state["capacidades"] = caps
+        self._log(f"Capacidades detectadas: {', '.join(caps) if caps else 'nenhuma'}")
+
+        resultados: Dict[str, Any] = {}
+
+        if "sellout" in caps:
+            res_so = analisar_sellout(df, mapa)
+            resultados["analise_sellout"] = res_so
+            n_desvios = len(res_so.get("desvios", []))
+            self._log(f"Sellout: {n_desvios} desvio(s) calculado(s)")
+
+        if "sellin" in caps:
+            res_si = analisar_sellin(df, mapa)
+            resultados["analise_sellin"] = res_si
+            n_desvios = len(res_si.get("desvios", []))
+            self._log(f"Sellin: {n_desvios} desvio(s) calculado(s)")
+
+        if "doi" in caps:
+            res_doi = analisar_doi(df, mapa)
+            resultados["analise_doi"] = res_doi
+            n_desvios = len(res_doi.get("desvios", []))
+            self._log(f"DOI: {n_desvios} desvio(s) calculado(s)")
+
+        state["resultados"] = resultados
+        state["acoes_executadas"] = [
+            f"analisar_{cap}" for cap in caps
+        ]
+
+        if auditoria is not None:
+            auditoria.registrar(
+                "dominion_mondelez",
+                {
+                    "capacidades": caps,
+                    "chaves_resultados": list(resultados.keys()),
+                    "total_desvios": sum(
+                        len(r.get("desvios", []))
+                        for r in resultados.values()
+                        if isinstance(r, dict)
+                    ),
+                },
+            )
+
+        registrar_handoff(
+            state, "datashield", "dominion_mondelez",
+            ["dataset_canonico", "capacidades", "resultados"],
+        )
+        self._registrar_handoff_audit(
+            auditoria, "datashield", "dominion_mondelez",
+            ["dataset_canonico", "capacidades", "resultados"],
+        )
+
+        self._log("=== FIM DOMINION MONDELEZ ===")
+
     def _fase_optimus_com_validacao(
         self,
         state: Dict[str, Any],
@@ -359,18 +448,27 @@ class Nexus:
                     state["auditoria"] = auditoria_pre.para_dict()
                 return state
 
-        dominion_state = self.harness.executar_dominion(
-            pergunta_usuario,
-            preservar_logs=True,
-        )
-        state["dados"] = dominion_state.get("dados", {})
-        state["resultados"] = dominion_state.get("resultados", {})
-        state["acoes_executadas"] = dominion_state.get("acoes_executadas", [])
-
-        auditoria_raw = dominion_state.get("auditoria")
         auditoria: Optional[AuditTrail] = None
-        if isinstance(auditoria_raw, dict):
-            auditoria = self.harness.auditoria
+
+        if state.get("dataset_canonico") is not None:
+            if auditoria_pre is not None:
+                auditoria = auditoria_pre
+            else:
+                from audit import AuditTrail as AT, gerar_sessao_id
+                auditoria = AT(sessao_id=gerar_sessao_id())
+            self._fase_dominion_mondelez(state, auditoria)
+        else:
+            dominion_state = self.harness.executar_dominion(
+                pergunta_usuario,
+                preservar_logs=True,
+            )
+            state["dados"] = dominion_state.get("dados", {})
+            state["resultados"] = dominion_state.get("resultados", {})
+            state["acoes_executadas"] = dominion_state.get("acoes_executadas", [])
+
+            auditoria_raw = dominion_state.get("auditoria")
+            if isinstance(auditoria_raw, dict):
+                auditoria = self.harness.auditoria
 
         sinais = extrair_sinais_de_resultados(state["resultados"])
         state["sinais"] = [s.para_dict() for s in sinais]
