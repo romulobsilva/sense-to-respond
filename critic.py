@@ -39,6 +39,7 @@ Responda APENAS com JSON:
 
 CHAVES_OBRIGATORIAS = ("aprovado", "confianca", "problemas")
 MAX_RETRIES_JSON = 2
+MAX_PROPOSICOES_CRITIC = 50
 
 
 @dataclass
@@ -58,16 +59,41 @@ class CriticAgent:
         proposicoes: List[Proposicao],
         registrar_log: Optional[Callable[[str], None]] = None,
         auditoria: Optional[AuditTrail] = None,
+        resumo_compacto: Optional[str] = None,
     ) -> ResultadoCritica:
         """
         Audita proposicoes contra sinais (leitura only, sem gerar proposicoes).
+
+        Args:
+            sinais: lista de sinais (usada se resumo_compacto nao fornecido).
+            proposicoes: lista de proposicoes (top N selecionado se > 50).
+            registrar_log: callback de log.
+            auditoria: trilha de auditoria.
+            resumo_compacto: se fornecido, substitui sinais serializados.
+                Deve conter o resumo Nivel 3 (Categoria x Pais x Canal).
         """
         def log(msg: str) -> None:
             if registrar_log is not None:
                 registrar_log(msg)
 
-        contexto_sinais = serializar_sinais_para_llm(sinais)
-        contexto_props = serializar_proposicoes_para_llm(proposicoes)
+        if resumo_compacto is not None:
+            contexto_sinais = resumo_compacto
+            log(f"Critic: usando resumo compacto ({len(resumo_compacto)} chars)")
+        else:
+            contexto_sinais = serializar_sinais_para_llm(sinais)
+
+        props_para_critic = proposicoes
+        if len(proposicoes) > MAX_PROPOSICOES_CRITIC:
+            props_para_critic = sorted(
+                proposicoes,
+                key=lambda p: p.impacto_financeiro,
+                reverse=True,
+            )[:MAX_PROPOSICOES_CRITIC]
+            log(
+                f"Critic: truncado {len(proposicoes)} proposicoes "
+                f"para top {MAX_PROPOSICOES_CRITIC} por impacto"
+            )
+        contexto_props = serializar_proposicoes_para_llm(props_para_critic)
 
         log("Chamada OpenAI: Critic auditar (leitura only)")
         log(f"Modelo: {self._model}")

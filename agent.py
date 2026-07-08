@@ -47,12 +47,17 @@ ou
 {"acao": "fim", "justificativa": "Todas as validacoes pedidas ja foram feitas."}
 """
 
-SYSTEM_EXPLICACAO = """Voce e um analista de negocios.
+SYSTEM_EXPLICACAO = """Voce e um analista senior de S&OE (Sales & Operations Execution).
 
-Com base nos resultados deterministicos fornecidos, escreva uma explicacao
-clara em portugues para o usuario. Cite numeros, SKUs e percentuais.
-Se houver divergencias acima de 10%, destaque e sugira causas possiveis.
-Seja objetivo (paragrafos curtos e bullets quando fizer sentido).
+Com base no resumo por categoria e nas proposicoes mais criticas fornecidos,
+escreva uma explicacao executiva clara em portugues. Siga estas regras:
+
+1. Comece com um paragrafo de visao geral (desvio medio SO, SI, DOI).
+2. Destaque as 3-5 categorias/paises com maior desvio.
+3. Liste as proposicoes mais urgentes (maior impacto financeiro).
+4. Se houver DOI fora da politica (gap > 7d), destaque risco de ruptura ou overstock.
+5. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
+6. NAO invente numeros. Use apenas os dados fornecidos no contexto.
 """
 
 

@@ -47,6 +47,8 @@ from tools_parametrizadas import (
 )
 from validator import validar_proposicoes
 
+MAX_PROPOSICOES_EXPLICACAO = 30
+
 TIPOS_RESUMO_AUDITORIA = frozenset({
     "llm_decisao",
     "harness_correcao",
@@ -312,6 +314,82 @@ class Nexus:
 
         self._log("=== FIM DOMINION MONDELEZ ===")
 
+    def _montar_resumo_compacto_critic(
+        self,
+        state: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        Monta texto compacto do resumo Nivel 3 para o Critic.
+
+        Se resumo_categorias estiver disponivel no state, retorna
+        texto formatado (~124 linhas). Caso contrario retorna None
+        e o Critic usa sinais brutos (fluxo legado).
+        """
+        resultados = state.get("resultados", {})
+        if not isinstance(resultados, dict):
+            return None
+
+        rc = resultados.get("resumo_categorias", {})
+        if not isinstance(rc, dict):
+            return None
+
+        cats = rc.get("resumo_categorias", [])
+        if not cats:
+            return None
+
+        linhas: List[str] = [
+            f"RESUMO POR CATEGORIA ({len(cats)} combinacoes Categoria x Pais x Canal):",
+            "",
+        ]
+        for item in cats:
+            if not isinstance(item, dict):
+                continue
+            cat = item.get("categoria", "?")
+            pais = item.get("pais", "?")
+            canal = item.get("canal", "?")
+            partes = [f"{cat} | {pais} | {canal}"]
+
+            so_pct = item.get("so_desvio_pct")
+            if so_pct is not None:
+                partes.append(f"SO={so_pct:+.1f}%")
+            si_pct = item.get("si_desvio_pct")
+            if si_pct is not None:
+                partes.append(f"SI={si_pct:+.1f}%")
+            doi_gap = item.get("doi_gap_dias")
+            if doi_gap is not None:
+                partes.append(f"DOI_gap={doi_gap:+.1f}d")
+            nr = item.get("nr_total")
+            if nr is not None:
+                partes.append(f"NR=${nr:,.0f}")
+
+            linhas.append(" | ".join(partes))
+
+        totais = rc.get("totais", {})
+        if totais:
+            linhas.append("")
+            linhas.append(
+                f"TOTAIS: SO plan={totais.get('so_plan_total', 0):,.0f} "
+                f"actual={totais.get('so_actual_total', 0):,.0f} | "
+                f"SI plan={totais.get('si_plan_total', 0):,.0f} "
+                f"actual={totais.get('si_actual_total', 0):,.0f}"
+            )
+
+        resumo = state.get("resultados", {})
+        for key in ["analise_sellout", "analise_sellin", "analise_doi"]:
+            r = resumo.get(key, {}).get("resumo", {})
+            if isinstance(r, dict) and "total_registros" in r:
+                linhas.append(
+                    f"{key}: {r.get('total_registros', 0)} grupos agregados, "
+                    f"impacto total NR=${r.get('total_nr_impacto', 0):,.0f}"
+                )
+
+        n_sinais = len(state.get("sinais", []))
+        n_props = len(state.get("proposicoes", []))
+        linhas.append(f"\nTotal sinais gerados: {n_sinais}")
+        linhas.append(f"Total proposicoes geradas: {n_props}")
+
+        return "\n".join(linhas)
+
     def _fase_optimus_com_validacao(
         self,
         state: Dict[str, Any],
@@ -380,11 +458,14 @@ class Nexus:
                 self._log("Retry Optimus por falha do validador deterministico.")
                 continue
 
+            resumo_compacto = self._montar_resumo_compacto_critic(state)
+
             critica = self.critic.auditar(
                 sinais,
                 proposicoes,
                 registrar_log=self._log,
                 auditoria=auditoria,
+                resumo_compacto=resumo_compacto,
             )
             state["critica"] = critica.para_dict()
             registrar_handoff(
@@ -524,14 +605,25 @@ class Nexus:
                 },
             )
 
-        contexto = serializar_resultados_para_llm(state)
+        resumo_compacto = self._montar_resumo_compacto_critic(state)
+        if resumo_compacto is not None:
+            contexto = resumo_compacto
+        else:
+            contexto = serializar_resultados_para_llm(state)
+
+        top_props = sorted(
+            proposicoes,
+            key=lambda p: p.impacto_financeiro,
+            reverse=True,
+        )[:MAX_PROPOSICOES_EXPLICACAO]
         contexto_props = "\n".join(
             f"- {p.proposicao_id}: {p.titulo} (R$ {p.impacto_financeiro:.2f})"
-            for p in proposicoes
+            for p in top_props
         )
         texto_llm = self.agente.gerar_explicacao(
             pergunta_usuario,
-            f"{contexto}\n\n=== Proposicoes Optimus ===\n{contexto_props}",
+            f"{contexto}\n\n=== Top {len(top_props)} Proposicoes Optimus "
+            f"(de {len(proposicoes)} total) ===\n{contexto_props}",
             registrar_log=self._log,
             auditoria=auditoria,
         )
