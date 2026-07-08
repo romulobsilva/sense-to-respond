@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 
+HITL_MODES_VALIDOS = frozenset({"terminal", "auto", "arquivo", "streamlit"})
+
+
 @dataclass(frozen=True)
 class Settings:
     """Configuracao da aplicacao."""
@@ -16,6 +19,7 @@ class Settings:
     openai_model: str
     limiar_confianca_critic: float
     max_optimus_retries: int
+    hitl_mode: str
 
 
 def load_settings() -> Settings:
@@ -53,9 +57,17 @@ def load_settings() -> Settings:
     if max_retries < 0 or max_retries > 3:
         raise ValueError("MAX_OPTIMUS_RETRIES deve estar entre 0 e 3.")
 
+    hitl_mode = os.getenv("HITL_MODE", "terminal").strip().lower()
+    if hitl_mode not in HITL_MODES_VALIDOS:
+        raise ValueError(
+            f"HITL_MODE '{hitl_mode}' invalido. "
+            f"Validos: {', '.join(sorted(HITL_MODES_VALIDOS))}"
+        )
+
     return Settings(
         openai_api_key=api_key,
         openai_model=model,
         limiar_confianca_critic=limiar_confianca,
         max_optimus_retries=max_retries,
+        hitl_mode=hitl_mode,
     )

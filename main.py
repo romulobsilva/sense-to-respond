@@ -10,6 +10,12 @@ from typing import Any, Dict, List
 from agent import AgenteOpenAI
 from config import load_settings
 from harness import Harness, TIPOS_RESUMO_AUDITORIA as TIPOS_HARNESS
+from hitl import (
+    HITLArquivo,
+    HITLAutoApprove,
+    HITLTerminal,
+    InterfaceHITL,
+)
 from nexus import Nexus, TIPOS_RESUMO_AUDITORIA as TIPOS_NEXUS
 
 
@@ -82,6 +88,23 @@ def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
             print(f"  motivo: {motivo}")
 
 
+def _criar_hitl(hitl_mode: str) -> InterfaceHITL:
+    """
+    Instancia a implementacao de HITL conforme configuracao.
+
+    Args:
+        hitl_mode: modo de HITL (terminal, auto, arquivo, streamlit).
+
+    Returns:
+        Implementacao de InterfaceHITL.
+    """
+    if hitl_mode == "auto":
+        return HITLAutoApprove()
+    if hitl_mode in ("arquivo", "streamlit"):
+        return HITLArquivo()
+    return HITLTerminal()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Sense to Respond MVP: Nexus com validador e critic."
@@ -97,6 +120,12 @@ def main() -> None:
         default="nexus",
         help="nexus=MVP completo; legado=harness sem Optimus/Critic.",
     )
+    parser.add_argument(
+        "--input",
+        default=None,
+        dest="arquivo_entrada",
+        help="Caminho para CSV/XLSX de entrada (ativa DataShield).",
+    )
     args = parser.parse_args()
 
     settings = load_settings()
@@ -107,12 +136,24 @@ def main() -> None:
         "modelado com a DRE."
     )
 
+    if args.arquivo_entrada:
+        pergunta = (
+            "Analise os dados do arquivo fornecido, identifique desvios "
+            "e gere proposicoes de acao."
+        )
+
     if args.modo == "legado":
         harness = Harness(agente=agente)
         resultado = harness.executar(pergunta)
         tipos_auditoria = TIPOS_HARNESS
     else:
-        nexus = Nexus(agente=agente, settings=settings)
+        hitl = _criar_hitl(settings.hitl_mode)
+        nexus = Nexus(
+            agente=agente,
+            settings=settings,
+            hitl=hitl,
+            arquivo_entrada=args.arquivo_entrada,
+        )
         resultado = nexus.executar(pergunta)
         tipos_auditoria = TIPOS_NEXUS
 

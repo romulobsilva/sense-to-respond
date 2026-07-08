@@ -14,6 +14,10 @@ TIPOS_DECISAO_MVP = frozenset({
     "gerenciar_falta_excesso",
     "ajustar_custo",
     "ajustar_demanda",
+    "ajustar_plano_sellout",
+    "ajustar_plano_sellin",
+    "rebalancear_estoque_doi",
+    "investigar_desvio_canal",
 })
 
 
@@ -30,6 +34,9 @@ class Sinal:
     referencia: float
     desvio_pct: float
     severidade: str
+    pais: str = ""
+    categoria: str = ""
+    marca: str = ""
 
     def para_dict(self) -> Dict[str, Any]:
         """Serializa o sinal para JSON."""
@@ -103,6 +110,9 @@ class ItemFilaNexus:
 def criar_state_inicial(pergunta: str) -> Dict[str, Any]:
     """
     Inicializa o blackboard compartilhado do Nexus.
+
+    Campos de DataShield e HITL sao inicializados como None/lista vazia
+    e preenchidos apenas quando um arquivo de entrada e fornecido.
     """
     return {
         "pergunta": pergunta,
@@ -116,6 +126,15 @@ def criar_state_inicial(pergunta: str) -> Dict[str, Any]:
         "fila_nexus": [],
         "optimus_tentativas": 0,
         "handoffs": [],
+        "dataset_csv": None,
+        "perfil_dados": None,
+        "mapa_semantico": None,
+        "schema_confirmado": False,
+        "dataset_canonico": None,
+        "nivel_adaptacao": None,
+        "capacidades": [],
+        "hitl_pendentes": [],
+        "hitl_resolvidos": [],
     }
 
 

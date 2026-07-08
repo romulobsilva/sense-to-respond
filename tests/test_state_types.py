@@ -66,6 +66,9 @@ class TestStateInicial:
             "pergunta", "dados", "resultados", "acoes_executadas",
             "sinais", "proposicoes", "validacao", "critica",
             "fila_nexus", "optimus_tentativas", "handoffs",
+            "dataset_csv", "perfil_dados", "mapa_semantico",
+            "schema_confirmado", "dataset_canonico", "nivel_adaptacao",
+            "capacidades", "hitl_pendentes", "hitl_resolvidos",
         ]
         for campo in campos:
             assert campo in state, f"Campo '{campo}' ausente no state."
@@ -166,6 +169,8 @@ class TestTiposDecisaoMVP:
             "rebalancear_estoque", "priorizar_skus", "ajustar_cobertura",
             "proteger_promocao", "gerenciar_falta_excesso",
             "ajustar_custo", "ajustar_demanda",
+            "ajustar_plano_sellout", "ajustar_plano_sellin",
+            "rebalancear_estoque_doi", "investigar_desvio_canal",
         ]
         for tipo in esperados:
             assert tipo in TIPOS_DECISAO_MVP

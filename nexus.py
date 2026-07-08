@@ -1,5 +1,8 @@
 """
 Nexus: orquestrador MVP com state compartilhado, validador, critic e fila.
+
+Pipeline: DataShield (opcional) -> Dominion -> Sinais -> Optimus ->
+          Validador -> Critic -> Fila -> Output Guardrail -> HITL
 """
 
 from dataclasses import dataclass, field
@@ -9,12 +12,23 @@ from agent import AgenteOpenAI
 from audit import AuditTrail
 from config import Settings
 from critic import CriticAgent
+from datashield import (
+    MapaSemResult,
+    normalizar_dataset,
+    processar_arquivo,
+)
 from guardrails import (
     aplicar_output_guardrail,
     montar_fila_com_flags,
     verificar_input,
 )
 from harness import Harness
+from hitl import (
+    DecisaoHumana,
+    InterfaceHITL,
+    HITLAutoApprove,
+    PedidoAprovacao,
+)
 from optimus import gerar_proposicoes, proposicoes_para_state
 from sinais import extrair_sinais_de_resultados
 from state_types import (
@@ -47,11 +61,14 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
 @dataclass
 class Nexus:
     """
-    Control plane MVP: Dominion -> Optimus -> Validador -> Critic -> Fila.
+    Control plane MVP: DataShield -> Dominion -> Optimus -> Validador ->
+    Critic -> Fila -> HITL.
     """
 
     agente: AgenteOpenAI
     settings: Settings
+    hitl: InterfaceHITL = field(default_factory=HITLAutoApprove)
+    arquivo_entrada: Optional[str] = None
     harness: Harness = field(init=False)
     critic: CriticAgent = field(init=False)
     logs: List[str] = field(default_factory=list)
@@ -80,6 +97,125 @@ class Nexus:
             "handoff",
             {"origem": origem, "destino": destino, "payload_chaves": chaves},
         )
+
+    def _fase_datashield(
+        self,
+        state: Dict[str, Any],
+        auditoria: Optional[AuditTrail],
+    ) -> bool:
+        """
+        Executa DataShield Lite se arquivo_entrada foi fornecido.
+
+        Retorna True se o pipeline pode continuar, False se deve parar
+        (ex: schema rejeitado pelo humano).
+        """
+        if not self.arquivo_entrada:
+            self._log("DataShield: sem arquivo de entrada, usando dados simulados.")
+            return True
+
+        self._log(f"DataShield: processando '{self.arquivo_entrada}'...")
+
+        try:
+            resultado_ds = processar_arquivo(self.arquivo_entrada)
+        except (FileNotFoundError, ValueError) as exc:
+            self._log(f"DataShield: erro ao processar arquivo: {exc}")
+            if auditoria is not None:
+                auditoria.registrar(
+                    "datashield_erro",
+                    {"arquivo": self.arquivo_entrada, "erro": str(exc)},
+                )
+            return False
+
+        perfil = resultado_ds["perfil"]
+        mapa_result: MapaSemResult = resultado_ds["mapa"]
+        df = resultado_ds["df"]
+
+        state["dataset_csv"] = df
+        state["perfil_dados"] = perfil.para_dict()
+        state["mapa_semantico"] = mapa_result.para_dict()
+        state["nivel_adaptacao"] = resultado_ds["nivel_adaptacao"]
+
+        self._log(
+            f"DataShield: {perfil.linhas} linhas, {perfil.colunas_total} colunas, "
+            f"confianca mapeamento={mapa_result.confianca:.2f}"
+        )
+
+        if auditoria is not None:
+            auditoria.registrar(
+                "datashield_perfil",
+                {
+                    "arquivo": self.arquivo_entrada,
+                    "linhas": perfil.linhas,
+                    "colunas": perfil.colunas_total,
+                    "confianca": mapa_result.confianca,
+                    "mapeadas": len(mapa_result.colunas_mapeadas),
+                    "nao_mapeadas": len(mapa_result.colunas_nao_mapeadas),
+                    "warnings": mapa_result.warnings,
+                },
+            )
+
+        pedido = PedidoAprovacao(
+            tipo="mapeamento_semantico",
+            resumo=(
+                f"Confirme o mapeamento de {len(mapa_result.colunas_mapeadas)} "
+                f"coluna(s) (confianca: {mapa_result.confianca:.0%})"
+            ),
+            detalhes={
+                "mapa": mapa_result.mapa,
+                "colunas_nao_mapeadas": mapa_result.colunas_nao_mapeadas,
+                "warnings": mapa_result.warnings,
+                "confianca": mapa_result.confianca,
+            },
+        )
+
+        pedido_resolvido = self.hitl.solicitar_aprovacao(pedido)
+
+        hitl_pendentes: List[Dict[str, object]] = state.get("hitl_pendentes", [])
+        hitl_resolvidos: List[Dict[str, object]] = state.get("hitl_resolvidos", [])
+        hitl_resolvidos.append(pedido_resolvido.para_dict())
+        state["hitl_pendentes"] = hitl_pendentes
+        state["hitl_resolvidos"] = hitl_resolvidos
+
+        if auditoria is not None:
+            auditoria.registrar(
+                "hitl_decisao",
+                {
+                    "tipo": pedido_resolvido.tipo,
+                    "decisao": pedido_resolvido.decisao.value if pedido_resolvido.decisao else None,
+                    "comentario": pedido_resolvido.comentario,
+                    "decidido_por": pedido_resolvido.decidido_por,
+                },
+            )
+
+        if pedido_resolvido.decisao == DecisaoHumana.REJEITADO:
+            self._log("DataShield: mapeamento REJEITADO pelo humano. Pipeline encerrado.")
+            state["schema_confirmado"] = False
+            return False
+
+        if pedido_resolvido.decisao == DecisaoHumana.POSTERGADO:
+            self._log("DataShield: mapeamento POSTERGADO. Pipeline encerrado.")
+            state["schema_confirmado"] = False
+            return False
+
+        state["schema_confirmado"] = True
+        df_canonico = normalizar_dataset(df, mapa_result.mapa)
+        state["dataset_canonico"] = df_canonico
+
+        registrar_handoff(
+            state, "datashield", "dominion",
+            ["dataset_canonico", "mapa_semantico", "schema_confirmado"],
+        )
+        self._registrar_handoff_audit(
+            auditoria, "datashield", "dominion",
+            ["dataset_canonico", "mapa_semantico", "schema_confirmado"],
+        )
+
+        self._log(
+            f"DataShield: schema confirmado. Dataset normalizado com "
+            f"{len(df_canonico)} linhas."
+        )
+
+        return True
 
     def _fase_optimus_com_validacao(
         self,
@@ -189,6 +325,9 @@ class Nexus:
     def executar(self, pergunta_usuario: str) -> Dict[str, Any]:
         """
         Pipeline MVP completo com guardrails, validacao e fila Nexus.
+
+        Fluxo: Input guardrail -> DataShield (se arquivo) -> Dominion ->
+               Sinais -> Optimus -> Validador -> Critic -> Fila -> Output guardrail
         """
         self.logs.clear()
         self.harness.logs.clear()
@@ -206,6 +345,19 @@ class Nexus:
         self._log(f"Input guardrail OK: {input_check.detalhe}")
 
         state = criar_state_inicial(pergunta_usuario)
+
+        auditoria_pre: Optional[AuditTrail] = None
+
+        if self.arquivo_entrada:
+            from audit import AuditTrail as AT, gerar_sessao_id
+            auditoria_pre = AT(sessao_id=gerar_sessao_id())
+            pode_continuar = self._fase_datashield(state, auditoria_pre)
+            if not pode_continuar:
+                self._log("=== FIM NEXUS MVP (DataShield bloqueou) ===")
+                state["logs"] = list(self.logs)
+                if auditoria_pre is not None:
+                    state["auditoria"] = auditoria_pre.para_dict()
+                return state
 
         dominion_state = self.harness.executar_dominion(
             pergunta_usuario,
