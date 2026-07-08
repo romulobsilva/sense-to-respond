@@ -43,6 +43,7 @@ from tools_parametrizadas import (
     analisar_sellin,
     analisar_sellout,
     detectar_capacidades,
+    resumir_por_categoria,
 )
 from validator import validar_proposicoes
 
@@ -275,6 +276,11 @@ class Nexus:
             resultados["analise_doi"] = res_doi
             n_desvios = len(res_doi.get("desvios", []))
             self._log(f"DOI: {n_desvios} desvio(s) calculado(s)")
+
+        resumo_cat = resumir_por_categoria(df, mapa)
+        resultados["resumo_categorias"] = resumo_cat
+        n_cats = len(resumo_cat.get("resumo_categorias", []))
+        self._log(f"Resumo Nivel 3: {n_cats} categoria(s) x pais x canal")
 
         state["resultados"] = resultados
         state["acoes_executadas"] = [

@@ -6,6 +6,8 @@ Valida regras do S&OE Analyst Questions Script:
   - DOI actual vs policy
   - Impacto financeiro deterministico
   - Deteccao de capacidades a partir do mapa
+  - Agregacao vetorizada por SKU x Pais x Canal (Nivel 1)
+  - Resumo por Categoria x Pais x Canal (Nivel 3)
 """
 
 from pathlib import Path
@@ -23,10 +25,13 @@ from tools_parametrizadas import (
     analisar_sellin,
     analisar_sellout,
     detectar_capacidades,
+    resumir_por_categoria,
 )
 
 
 FIXTURE_CSV = Path(__file__).parent / "fixtures" / "mondelez_ficticio.csv"
+
+FIXTURE_COMBOS_UNICAS = 10
 
 
 def _carregar_fixture() -> pd.DataFrame:
@@ -93,12 +98,12 @@ class TestDetectarCapacidades:
 
 
 # ---------------------------------------------------------------------------
-# analisar_sellout
+# analisar_sellout (agregado)
 # ---------------------------------------------------------------------------
 
 
 class TestAnalisarSellout:
-    """Testes para analise de sell-out."""
+    """Testes para analise de sell-out agregada."""
 
     def test_retorna_desvios_e_resumo(self) -> None:
         df = _carregar_fixture()
@@ -107,7 +112,45 @@ class TestAnalisarSellout:
 
         assert "desvios" in resultado
         assert "resumo" in resultado
-        assert len(resultado["desvios"]) == 20
+        assert len(resultado["desvios"]) == FIXTURE_COMBOS_UNICAS
+
+    def test_agregacao_soma_tons(self) -> None:
+        """2 linhas do mesmo SKU/Pais/Canal devem ser somadas."""
+        df = pd.DataFrame({
+            "SellOut_Plan_Ton": [100.0, 50.0],
+            "SellOut_Actual_Ton": [120.0, 40.0],
+            "SellOut_Actual_NR_USD": [1200.0, 400.0],
+            "SKU_Code": ["A", "A"],
+            "Country": ["BR", "BR"],
+            "Channel": ["MT", "MT"],
+            "Category": ["Choc", "Choc"],
+            "Brand": ["X", "X"],
+        })
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_sellout(df, mapa)
+
+        assert len(resultado["desvios"]) == 1
+        d = resultado["desvios"][0]
+        assert d["plan_ton"] == 150.0
+        assert d["actual_ton"] == 160.0
+        expected_pct = round(((160.0 - 150.0) / 150.0) * 100.0, 2)
+        assert d["desvio_pct"] == expected_pct
+
+    def test_skus_diferentes_nao_agregam(self) -> None:
+        """SKUs diferentes geram desvios separados."""
+        df = pd.DataFrame({
+            "SellOut_Plan_Ton": [100.0, 100.0],
+            "SellOut_Actual_Ton": [120.0, 80.0],
+            "SellOut_Actual_NR_USD": [1200.0, 800.0],
+            "SKU_Code": ["A", "B"],
+            "Country": ["BR", "BR"],
+            "Channel": ["MT", "MT"],
+            "Category": ["Choc", "Choc"],
+            "Brand": ["X", "X"],
+        })
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_sellout(df, mapa)
+        assert len(resultado["desvios"]) == 2
 
     def test_desvio_positivo_quando_actual_maior(self) -> None:
         df = pd.DataFrame({
@@ -155,6 +198,10 @@ class TestAnalisarSellout:
             "SellOut_Plan_NR_USD": [5000.0],
             "SellOut_Actual_NR_USD": [5500.0],
             "SKU_Code": ["TEST-03"],
+            "Country": ["BR"],
+            "Channel": ["MT"],
+            "Category": ["Choc"],
+            "Brand": ["X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_sellout(df, mapa)
@@ -170,6 +217,10 @@ class TestAnalisarSellout:
             "SellOut_Actual_Ton": [120.0, 80.0, 100.0],
             "SellOut_Actual_NR_USD": [1200.0, 800.0, 1000.0],
             "SKU_Code": ["A", "B", "C"],
+            "Country": ["BR", "BR", "BR"],
+            "Channel": ["MT", "MT", "MT"],
+            "Category": ["Choc", "Choc", "Choc"],
+            "Brand": ["X", "X", "X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_sellout(df, mapa)
@@ -190,6 +241,10 @@ class TestAnalisarSellout:
             "SellOut_Plan_Ton": [0.0],
             "SellOut_Actual_Ton": [50.0],
             "SKU_Code": ["ZERO"],
+            "Country": ["BR"],
+            "Channel": ["MT"],
+            "Category": ["Choc"],
+            "Brand": ["X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_sellout(df, mapa)
@@ -199,16 +254,34 @@ class TestAnalisarSellout:
         df = _carregar_fixture()
         mapa_result = mapear_semantico_deterministico(list(df.columns))
         resultado = analisar_sellout(df, mapa_result.mapa)
-        assert len(resultado["desvios"]) == 20
+        assert len(resultado["desvios"]) == FIXTURE_COMBOS_UNICAS
+
+    def test_nulos_filtrados_antes_agregacao(self) -> None:
+        """Linhas com NaN em actual devem ser ignoradas."""
+        df = pd.DataFrame({
+            "SellOut_Plan_Ton": [100.0, 100.0, 100.0],
+            "SellOut_Actual_Ton": [120.0, None, 80.0],
+            "SellOut_Actual_NR_USD": [1200.0, None, 800.0],
+            "SKU_Code": ["A", "A", "B"],
+            "Country": ["BR", "BR", "BR"],
+            "Channel": ["MT", "MT", "MT"],
+            "Category": ["Choc", "Choc", "Choc"],
+            "Brand": ["X", "X", "X"],
+        })
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_sellout(df, mapa)
+        skus = {d["sku"] for d in resultado["desvios"]}
+        assert "A" in skus
+        assert "B" in skus
 
 
 # ---------------------------------------------------------------------------
-# analisar_sellin
+# analisar_sellin (agregado)
 # ---------------------------------------------------------------------------
 
 
 class TestAnalisarSellin:
-    """Testes para analise de sell-in."""
+    """Testes para analise de sell-in agregada."""
 
     def test_retorna_desvios_e_resumo(self) -> None:
         df = _carregar_fixture()
@@ -217,7 +290,7 @@ class TestAnalisarSellin:
 
         assert "desvios" in resultado
         assert "resumo" in resultado
-        assert len(resultado["desvios"]) == 20
+        assert len(resultado["desvios"]) == FIXTURE_COMBOS_UNICAS
 
     def test_desvio_sellin_calculado(self) -> None:
         df = pd.DataFrame({
@@ -238,6 +311,25 @@ class TestAnalisarSellin:
         assert desvio["desvio_pct"] == 20.0
         assert desvio["sku"] == "SI-01"
 
+    def test_agregacao_sellin(self) -> None:
+        """Linhas do mesmo SKU/Pais/Canal devem ser somadas."""
+        df = pd.DataFrame({
+            "SellIn_Plan_Ton": [100.0, 100.0],
+            "SellIn_Actual_Ton": [90.0, 110.0],
+            "SellIn_Actual_NR_USD": [900.0, 1100.0],
+            "SKU_Code": ["SI-A", "SI-A"],
+            "Country": ["BR", "BR"],
+            "Channel": ["MT", "MT"],
+            "Category": ["Choc", "Choc"],
+            "Brand": ["X", "X"],
+        })
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_sellin(df, mapa)
+        assert len(resultado["desvios"]) == 1
+        assert resultado["desvios"][0]["plan_ton"] == 200.0
+        assert resultado["desvios"][0]["actual_ton"] == 200.0
+        assert resultado["desvios"][0]["desvio_pct"] == 0.0
+
     def test_colunas_ausentes_retorna_erro(self) -> None:
         df = pd.DataFrame({"irrelevante": [1]})
         resultado = analisar_sellin(df, {})
@@ -246,12 +338,12 @@ class TestAnalisarSellin:
 
 
 # ---------------------------------------------------------------------------
-# analisar_doi
+# analisar_doi (agregado com media)
 # ---------------------------------------------------------------------------
 
 
 class TestAnalisarDoi:
-    """Testes para analise de DOI."""
+    """Testes para analise de DOI agregada."""
 
     def test_retorna_desvios_e_resumo(self) -> None:
         df = _carregar_fixture()
@@ -260,7 +352,27 @@ class TestAnalisarDoi:
 
         assert "desvios" in resultado
         assert "resumo" in resultado
-        assert len(resultado["desvios"]) == 20
+        assert len(resultado["desvios"]) == FIXTURE_COMBOS_UNICAS
+
+    def test_doi_usa_media_nao_soma(self) -> None:
+        """DOI deve ser agregado por media (dias nao sao aditivos)."""
+        df = pd.DataFrame({
+            "DOI_Plan_Days": [30.0, 30.0],
+            "DOI_Actual_Days": [40.0, 50.0],
+            "SellOut_Actual_NR_USD": [5000.0, 5000.0],
+            "SKU_Code": ["DOI-A", "DOI-A"],
+            "Country": ["BR", "BR"],
+            "Channel": ["MT", "MT"],
+            "Category": ["Choc", "Choc"],
+            "Brand": ["X", "X"],
+        })
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_doi(df, mapa)
+        assert len(resultado["desvios"]) == 1
+        d = resultado["desvios"][0]
+        assert d["doi_plan"] == 30.0
+        assert d["doi_actual"] == 45.0
+        assert d["gap_dias"] == 15.0
 
     def test_gap_positivo_quando_acima_target(self) -> None:
         df = pd.DataFrame({
@@ -289,6 +401,9 @@ class TestAnalisarDoi:
             "SellOut_Actual_NR_USD": [6000.0],
             "SKU_Code": ["DOI-02"],
             "Country": ["BR"],
+            "Channel": ["MT"],
+            "Category": ["Choc"],
+            "Brand": ["X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_doi(df, mapa)
@@ -302,6 +417,10 @@ class TestAnalisarDoi:
             "DOI_Actual_Days": [60.0],
             "SellOut_Actual_NR_USD": [9000.0],
             "SKU_Code": ["DOI-03"],
+            "Country": ["BR"],
+            "Channel": ["MT"],
+            "Category": ["Choc"],
+            "Brand": ["X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_doi(df, mapa)
@@ -315,6 +434,10 @@ class TestAnalisarDoi:
             "DOI_Plan_Days": [20.0, 20.0, 20.0],
             "DOI_Actual_Days": [25.0, 15.0, 20.0],
             "SKU_Code": ["A", "B", "C"],
+            "Country": ["BR", "BR", "BR"],
+            "Channel": ["MT", "MT", "MT"],
+            "Category": ["Choc", "Choc", "Choc"],
+            "Brand": ["X", "X", "X"],
         })
         mapa = {c: c for c in df.columns}
         resultado = analisar_doi(df, mapa)
@@ -376,3 +499,66 @@ class TestAnalisarDoi:
         desvio = resultado["desvios"][0]
         assert desvio["gap_dias"] == -23.0
         assert desvio["sku"] == "BEL-LEITE-75G"
+
+
+# ---------------------------------------------------------------------------
+# resumir_por_categoria (Nivel 3)
+# ---------------------------------------------------------------------------
+
+
+class TestResumirPorCategoria:
+    """Testes para resumo Nivel 3 (Categoria x Pais x Canal)."""
+
+    def test_retorna_resumo_e_totais(self) -> None:
+        df = _carregar_fixture()
+        mapa = _mapa_identidade()
+        resultado = resumir_por_categoria(df, mapa)
+
+        assert "resumo_categorias" in resultado
+        assert "totais" in resultado
+        assert len(resultado["resumo_categorias"]) > 0
+
+    def test_menos_linhas_que_nivel_1(self) -> None:
+        """Nivel 3 deve ter menos linhas que Nivel 1."""
+        df = _carregar_fixture()
+        mapa = _mapa_identidade()
+        nivel1 = analisar_sellout(df, mapa)
+        nivel3 = resumir_por_categoria(df, mapa)
+
+        assert len(nivel3["resumo_categorias"]) < len(nivel1["desvios"])
+
+    def test_contem_so_si_doi(self) -> None:
+        """Cada linha do resumo deve conter metricas SO, SI e DOI."""
+        df = _carregar_fixture()
+        mapa = _mapa_identidade()
+        resultado = resumir_por_categoria(df, mapa)
+
+        r = resultado["resumo_categorias"][0]
+        assert "so_desvio_pct" in r
+        assert "si_desvio_pct" in r
+        assert "doi_gap_dias" in r
+
+    def test_dimensoes_presentes(self) -> None:
+        df = _carregar_fixture()
+        mapa = _mapa_identidade()
+        resultado = resumir_por_categoria(df, mapa)
+
+        r = resultado["resumo_categorias"][0]
+        assert "categoria" in r
+        assert "pais" in r
+        assert "canal" in r
+
+    def test_totais_preenchidos(self) -> None:
+        df = _carregar_fixture()
+        mapa = _mapa_identidade()
+        resultado = resumir_por_categoria(df, mapa)
+
+        totais = resultado["totais"]
+        assert "total_categorias" in totais
+        assert "so_plan_total" in totais
+        assert "so_actual_total" in totais
+
+    def test_mapa_vazio_retorna_vazio(self) -> None:
+        df = pd.DataFrame({"x": [1]})
+        resultado = resumir_por_categoria(df, {})
+        assert resultado["resumo_categorias"] == []

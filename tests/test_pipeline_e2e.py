@@ -130,6 +130,12 @@ class TestPipelineE2EMondelez:
         assert "analise_sellout" in resultados
         assert "analise_sellin" in resultados
         assert "analise_doi" in resultados
+        assert "resumo_categorias" in resultados
+
+        so_desvios = resultados["analise_sellout"]["desvios"]
+        assert len(so_desvios) == 10, (
+            f"Fixture tem 10 combos unicas, got {len(so_desvios)}"
+        )
 
         sinais = resultado.get("sinais", [])
         assert len(sinais) > 0, "Deve haver sinais extraidos"
