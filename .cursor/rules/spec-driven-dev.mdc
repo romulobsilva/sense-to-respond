@@ -29,8 +29,9 @@ Before code changes, read:
 4. Implement the smallest safe change.
 5. Add/update tests when behavior changes.
 6. Run at least: python main.py --modo nexus.
-7. Update docs/planning.md only when acceptance criteria pass.
-8. Update docs/agent.log.md at the end.
+7. If pipeline behavior changed: update docs/sense_to_respond_modelagem.tex in the same session and recompile the PDF (pdflatex). Model only what is implemented; planned work goes under "Proximos Passos", never as an invariant. Do not mark planning.md [x] while the LaTeX is stale.
+8. Update docs/planning.md only when acceptance criteria pass.
+9. Update docs/agent.log.md at the end.
 
 ## Code rules
 - Strict typing for public functions.

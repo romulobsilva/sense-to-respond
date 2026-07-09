@@ -46,6 +46,7 @@ class Settings:
     openai_api_key: str
     openai_model: str
     limiar_confianca_critic: float
+    limiar_confianca_datashield: float
     max_optimus_retries: int
     hitl_mode: str
     thresholds: DomainThresholds
@@ -122,6 +123,16 @@ def load_settings() -> Settings:
     if limiar_confianca < 0.0 or limiar_confianca > 1.0:
         raise ValueError("LIMIAR_CONFIANCA_CRITIC deve estar entre 0 e 1.")
 
+    limiar_ds_raw = os.getenv("LIMIAR_CONFIANCA_DATASHIELD", "0.6").strip()
+    try:
+        limiar_confianca_ds = float(limiar_ds_raw)
+    except ValueError as exc:
+        raise ValueError(
+            "LIMIAR_CONFIANCA_DATASHIELD deve ser um numero entre 0 e 1."
+        ) from exc
+    if limiar_confianca_ds < 0.0 or limiar_confianca_ds > 1.0:
+        raise ValueError("LIMIAR_CONFIANCA_DATASHIELD deve estar entre 0 e 1.")
+
     retries_raw = os.getenv("MAX_OPTIMUS_RETRIES", "1").strip()
     try:
         max_retries = int(retries_raw)
@@ -146,6 +157,7 @@ def load_settings() -> Settings:
         openai_api_key=api_key,
         openai_model=model,
         limiar_confianca_critic=limiar_confianca,
+        limiar_confianca_datashield=limiar_confianca_ds,
         max_optimus_retries=max_retries,
         hitl_mode=hitl_mode,
         thresholds=thresholds,

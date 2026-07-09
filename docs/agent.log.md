@@ -369,3 +369,60 @@ Mondelez e permitir reutilizacao do pipeline com outros clientes/setores.
 - Corrigir incompatibilidade numpy/pandas do ambiente (pip install --upgrade numpy pandas)
 - Commit e push das mudancas
 - Testar com dados reais apos fix do ambiente
+
+---
+
+## Sessao 12 - 2026-07-09 - DataShield Nivel 1 hibrido (deterministico + LLM)
+
+### Contexto
+- Usuario pediu implementacao do DataShield "Deterministico + LLM" apenas Nivel 1
+- Specs: ADR-0005, ADR-0009, ADR-0020, prompts.md secao 8, planning 1.5.2
+- Nivel 2 (ETL) e Nivel 3 (diagnostico) permanecem adiados
+
+### Decisoes
+- Contrato JSON alinhado ao schema Mondelez: `{mapeamentos, confidence, warnings}`
+  (substitui formato legado periodo/sku/volume_real do prompt 0.1.0)
+- Fluxo hibrido: match deterministico primeiro; LLM so para colunas pendentes
+  ou confianca abaixo do limiar
+- Confidence gate `LIMIAR_CONFIANCA_DATASHIELD` (default 0.6): em `HITL_MODE=auto`
+  bloqueia avanco; em modos interativos segue para HITL com flag `gate_ok`
+- Payload LLM: apenas perfil + amostra (ADR-0009); nunca DataFrame completo
+- Fallback seguro: sem API key ou falha JSON -> mantem mapa deterministico
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `datashield.py` | payload, validar, inferir, hibrido, gate |
+| `config.py` / `.env.example` | `LIMIAR_CONFIANCA_DATASHIELD` |
+| `nexus.py` | propaga API/model/limiar; bloqueio gate em auto |
+| `docs/prompts.md` | secao 8 v1.0.0 implementada |
+| `docs/planning.md` | 1.5.1 e 1.5.2 marcados [x] |
+| `tests/test_datashield_llm.py` | testes mock Nivel 1 |
+
+### Testes
+- `pytest tests/test_datashield.py tests/test_datashield_llm.py`: OK
+- E2E Mondelez fixture: OK (match deterministico, LLM nao chamado)
+- `test_belvita_aparece_como_ruptura`: falha pre-existente / independente
+  do DataShield (mapa temporal 100% deterministico)
+
+### Proximos passos
+- Nivel 2 ETL (sandbox + HITL script) quando Nivel 1 for validado em demo
+- Nivel 3 diagnostico de incompatibilidade
+- Investigar flakiness do assert Belvita no E2E temporal
+
+---
+
+## Sessao 13 - 2026-07-09 - LaTeX sync + regra de manutencao
+
+### Contexto
+- Usuario pediu atualizar o LaTeX apos DataShield Nivel 1 e gravar regra
+  de manter modelagem sempre alinhada ao codigo
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `docs/sense_to_respond_modelagem.tex` | Caps 1/3/12-14: hibrido N1, gate, algoritmo |
+| `docs/sense_to_respond_modelagem.pdf` | Recompilado (77 paginas) |
+| `rules.md` | Secao 2.1 + passo no fluxo obrigatorio |
+| `.cursor/rules/spec-driven-dev.mdc` | Passo 7: sync LaTeX |
+| `.cursor/rules/latex-modelagem-sync.mdc` | Regra por glob `*.py` / docs |

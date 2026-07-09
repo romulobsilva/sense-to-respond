@@ -1,0 +1,19 @@
+---
+description: Keep sense_to_respond_modelagem.tex synced with implemented pipeline behavior
+globs: "{*.py,docs/**/*.md,docs/sense_to_respond_modelagem.tex}"
+alwaysApply: false
+---
+
+# LaTeX modelagem always up to date
+
+When changing pipeline behavior (Python tools, Nexus, DataShield, Optimus,
+Critic, validator, config/thresholds, prompts, or contracts):
+
+1. Update `docs/sense_to_respond_modelagem.tex` in the **same session**.
+2. Recompile: `pdflatex docs/sense_to_respond_modelagem.tex` (twice if refs).
+3. Document only what the code implements; planned features go under
+   "Proximos Passos" (or equivalent), never as invariants.
+4. Do not mark `docs/planning.md` items `[x]` while the LaTeX is stale.
+5. Keep `.tex` ASCII with LaTeX escapes (`\'e`, `\c{c}`, etc.).
+
+See also `rules.md` section 2.1.

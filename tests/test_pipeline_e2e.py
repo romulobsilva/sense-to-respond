@@ -48,6 +48,7 @@ def _settings_teste() -> Settings:
         openai_api_key="sk-test-fake-key-for-e2e",
         openai_model="gpt-4o-mini",
         limiar_confianca_critic=0.6,
+        limiar_confianca_datashield=0.6,
         max_optimus_retries=1,
         hitl_mode="auto",
         thresholds=DomainThresholds(),

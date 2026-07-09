@@ -137,7 +137,15 @@ class Nexus:
                 self._log(f"DataShield: erro ao carregar schema: {exc}, usando default")
 
         try:
-            resultado_ds = processar_arquivo(self.arquivo_entrada, schema_canonico=schema_externo)
+            resultado_ds = processar_arquivo(
+                self.arquivo_entrada,
+                schema_canonico=schema_externo,
+                api_key=self.settings.openai_api_key,
+                model=self.settings.openai_model,
+                limiar_gate=self.settings.limiar_confianca_datashield,
+                usar_llm=True,
+                registrar_log=self._log,
+            )
         except (FileNotFoundError, ValueError) as exc:
             self._log(f"DataShield: erro ao processar arquivo: {exc}")
             if auditoria is not None:
@@ -158,7 +166,8 @@ class Nexus:
 
         self._log(
             f"DataShield: {perfil.linhas} linhas, {perfil.colunas_total} colunas, "
-            f"confianca mapeamento={mapa_result.confianca:.2f}"
+            f"confianca mapeamento={mapa_result.confianca:.2f}, "
+            f"origem={mapa_result.origem}, gate_ok={mapa_result.gate_ok}"
         )
 
         if auditoria is not None:
@@ -172,20 +181,47 @@ class Nexus:
                     "mapeadas": len(mapa_result.colunas_mapeadas),
                     "nao_mapeadas": len(mapa_result.colunas_nao_mapeadas),
                     "warnings": mapa_result.warnings,
+                    "origem": mapa_result.origem,
+                    "gate_ok": mapa_result.gate_ok,
                 },
             )
+
+        # Confidence gate: em modo auto, bloqueia se confianca baixa.
+        if (
+            not mapa_result.gate_ok
+            and self.settings.hitl_mode == "auto"
+        ):
+            self._log(
+                "DataShield: confidence gate BLOQUEOU avanco automatico "
+                f"(confianca={mapa_result.confianca:.2f} < "
+                f"{self.settings.limiar_confianca_datashield:.2f})."
+            )
+            if auditoria is not None:
+                auditoria.registrar(
+                    "datashield_gate",
+                    {
+                        "gate_ok": False,
+                        "confianca": mapa_result.confianca,
+                        "limiar": self.settings.limiar_confianca_datashield,
+                    },
+                )
+            state["schema_confirmado"] = False
+            return False
 
         pedido = PedidoAprovacao(
             tipo="mapeamento_semantico",
             resumo=(
                 f"Confirme o mapeamento de {len(mapa_result.colunas_mapeadas)} "
-                f"coluna(s) (confianca: {mapa_result.confianca:.0%})"
+                f"coluna(s) (confianca: {mapa_result.confianca:.0%}, "
+                f"origem: {mapa_result.origem})"
             ),
             detalhes={
                 "mapa": mapa_result.mapa,
                 "colunas_nao_mapeadas": mapa_result.colunas_nao_mapeadas,
                 "warnings": mapa_result.warnings,
                 "confianca": mapa_result.confianca,
+                "origem": mapa_result.origem,
+                "gate_ok": mapa_result.gate_ok,
             },
         )
 

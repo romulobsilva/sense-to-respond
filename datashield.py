@@ -5,24 +5,62 @@ Responsabilidades:
   - Ler CSV/XLSX
   - Gerar perfil estatistico por coluna
   - Gerar amostra representativa para LLM
-  - Inferir mapeamento semantico (Nivel 1, futuro)
+  - Inferir mapeamento semantico hibrido (deterministico + LLM Nivel 1)
+  - Validar mapa e aplicar confidence gate
   - Normalizar dataset conforme mapa confirmado
 
 Contrato: datashield escreve no state os campos
   dataset_csv, perfil_dados, mapa_semantico, dataset_canonico, schema_confirmado
 
-Refs: ADR-0019, ADR-0020
+Refs: ADR-0005, ADR-0009, ADR-0019, ADR-0020
 """
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-
 EXTENSOES_SUPORTADAS = frozenset({".csv", ".xlsx", ".xls"})
+
+# Confidence gate Nivel 1 (ADR-0005 / prompts.md secao 8).
+LIMIAR_CONFIANCA_DATASHIELD_DEFAULT = 0.6
+MAX_RETRIES_JSON_MAPA = 2
+MAX_AMOSTRAS_POR_COLUNA = 5
+ROLES_VALIDOS = frozenset({
+    "temporal",
+    "dimension",
+    "product",
+    "metric",
+    "tag",
+    "other",
+})
+
+SYSTEM_INFERIR_MAPA = """Voce mapeia colunas de um arquivo tabular para um schema canonico.
+
+Regras:
+1. Retorne APENAS JSON valido.
+2. Use somente canonical_name da lista fornecida.
+3. Use somente source_column presentes no perfil.
+4. Nao invente colunas. Nao calcule metricas. Nao altere valores.
+5. Prefira mapeamentos com alta confianca; se incerto, omita e avise em warnings.
+6. role deve ser um de: temporal, dimension, product, metric, tag, other.
+
+Formato:
+{
+  "mapeamentos": [
+    {
+      "canonical_name": "Date",
+      "source_column": "semana",
+      "confidence": 0.92,
+      "role": "temporal"
+    }
+  ],
+  "confidence": 0.87,
+  "warnings": []
+}
+"""
 
 SCHEMA_CANONICO_MONDELEZ: Dict[str, Dict[str, str]] = {
     "temporal": {
@@ -76,6 +114,19 @@ def _todas_colunas_canonicas(
     for grupo in schema.values():
         colunas.extend(grupo.keys())
     return colunas
+
+
+def _lookup_canonico(
+    schema: Optional[Dict[str, Dict[str, str]]] = None,
+) -> Dict[str, str]:
+    """Mapa lower(canonical) -> canonical preservando capitalizacao."""
+    if schema is None:
+        schema = SCHEMA_CANONICO_MONDELEZ
+    lookup: Dict[str, str] = {}
+    for grupo in schema.values():
+        for col_can in grupo.keys():
+            lookup[col_can.lower()] = col_can
+    return lookup
 
 
 def carregar_schema_de_json(caminho: str) -> Dict[str, Dict[str, str]]:
@@ -169,6 +220,9 @@ class MapaSemResult:
     colunas_nao_mapeadas: List[str]
     confianca: float
     warnings: List[str] = field(default_factory=list)
+    origem: str = "deterministico"
+    gate_ok: bool = True
+    json_bruto: str = ""
 
     def para_dict(self) -> Dict[str, object]:
         """Serializa para JSON."""
@@ -178,7 +232,20 @@ class MapaSemResult:
             "colunas_nao_mapeadas": self.colunas_nao_mapeadas,
             "confianca": round(self.confianca, 4),
             "warnings": self.warnings,
+            "origem": self.origem,
+            "gate_ok": self.gate_ok,
         }
+
+
+@dataclass
+class ResultadoValidacaoMapa:
+    """Resultado da validacao deterministica do JSON do LLM."""
+
+    ok: bool
+    erros: List[str] = field(default_factory=list)
+    mapa: Dict[str, str] = field(default_factory=dict)
+    confianca: float = 0.0
+    warnings: List[str] = field(default_factory=list)
 
 
 def ler_arquivo(caminho: str) -> pd.DataFrame:
@@ -238,7 +305,7 @@ def gerar_perfil(df: pd.DataFrame) -> PerfilDataset:
         unicos = int(serie.nunique())
 
         nao_nulos = serie.dropna()
-        amostra_raw = nao_nulos.head(5).tolist()
+        amostra_raw = nao_nulos.head(MAX_AMOSTRAS_POR_COLUNA).tolist()
         amostra_valores = [str(v) for v in amostra_raw]
 
         perfis.append(PerfilColuna(
@@ -293,10 +360,7 @@ def mapear_semantico_deterministico(
     Mapeamento semantico deterministico (case-insensitive, exact match).
 
     Faz match exato das colunas do dataset contra o schema canonico.
-    Usado como fallback ou quando o match e direto (alta confianca).
-
-    Para datasets com colunas nao reconhecidas, o LLM sera acionado
-    na funcao inferir_mapa_semantico (Nivel 1, futuro).
+    Usado como primeira etapa do fluxo hibrido Nivel 1.
 
     Args:
         nomes_colunas: nomes das colunas do dataset.
@@ -308,10 +372,7 @@ def mapear_semantico_deterministico(
     if schema_canonico is None:
         schema_canonico = SCHEMA_CANONICO_MONDELEZ
 
-    lookup: Dict[str, str] = {}
-    for grupo in schema_canonico.values():
-        for col_can, descricao in grupo.items():
-            lookup[col_can.lower()] = col_can
+    lookup = _lookup_canonico(schema_canonico)
 
     mapa: Dict[str, str] = {}
     mapeadas: List[str] = []
@@ -335,7 +396,9 @@ def mapear_semantico_deterministico(
         confianca = 0.0
     else:
         cobertura_dataset = len(mapeadas) / total
-        cobertura_schema = len(mapeadas) / total_canonico if total_canonico > 0 else 0.0
+        cobertura_schema = (
+            len(mapeadas) / total_canonico if total_canonico > 0 else 0.0
+        )
         confianca = (cobertura_dataset + cobertura_schema) / 2.0
 
     if nao_mapeadas:
@@ -360,6 +423,549 @@ def mapear_semantico_deterministico(
         colunas_nao_mapeadas=nao_mapeadas,
         confianca=round(confianca, 4),
         warnings=warnings,
+        origem="deterministico",
+        gate_ok=True,
+    )
+
+
+def montar_payload_llm(
+    perfil: PerfilDataset,
+    schema_canonico: Optional[Dict[str, Dict[str, str]]] = None,
+    colunas_ja_mapeadas: Optional[Dict[str, str]] = None,
+    colunas_pendentes: Optional[Sequence[str]] = None,
+) -> Dict[str, object]:
+    """
+    Monta payload compacto para o LLM (ADR-0009).
+
+    Nunca inclui o DataFrame completo -- apenas perfil e amostra limitada.
+
+    Args:
+        perfil: perfil estatistico do dataset.
+        schema_canonico: schema alvo.
+        colunas_ja_mapeadas: mapa flat ja resolvido deterministicamente.
+        colunas_pendentes: colunas ainda sem mapeamento.
+
+    Returns:
+        Dict serializavel seguro para prompt.
+    """
+    if schema_canonico is None:
+        schema_canonico = SCHEMA_CANONICO_MONDELEZ
+
+    schema_flat: Dict[str, str] = {}
+    for grupo, cols in schema_canonico.items():
+        for nome, desc in cols.items():
+            schema_flat[nome] = f"[{grupo}] {desc}"
+
+    perfis_payload: List[Dict[str, object]] = []
+    pendentes_set = (
+        set(colunas_pendentes)
+        if colunas_pendentes is not None
+        else set(perfil.nomes_colunas)
+    )
+    for p in perfil.perfis:
+        if p.nome not in pendentes_set and colunas_pendentes is not None:
+            continue
+        perfis_payload.append({
+            "nome": p.nome,
+            "dtype": p.dtype,
+            "nulos_pct": round(p.nulos_pct, 2),
+            "unicos": p.unicos,
+            "amostra_valores": p.amostra_valores[:MAX_AMOSTRAS_POR_COLUNA],
+        })
+
+    return {
+        "linhas": perfil.linhas,
+        "colunas_total": perfil.colunas_total,
+        "perfis": perfis_payload,
+        "schema_canonico": schema_flat,
+        "ja_mapeadas": dict(colunas_ja_mapeadas or {}),
+        "pendentes": list(colunas_pendentes or []),
+    }
+
+
+def validar_mapa_semantico(
+    dados: Dict[str, Any],
+    nomes_colunas: Sequence[str],
+    schema_canonico: Optional[Dict[str, Dict[str, str]]] = None,
+) -> ResultadoValidacaoMapa:
+    """
+    Valida JSON do LLM contra schema e colunas do dataset.
+
+    Args:
+        dados: objeto JSON parseado do LLM.
+        nomes_colunas: colunas reais do DataFrame.
+        schema_canonico: schema permitido.
+
+    Returns:
+        ResultadoValidacaoMapa com mapa flat se ok.
+    """
+    erros: List[str] = []
+    if schema_canonico is None:
+        schema_canonico = SCHEMA_CANONICO_MONDELEZ
+
+    lookup = _lookup_canonico(schema_canonico)
+    colunas_set = {str(c) for c in nomes_colunas}
+
+    for chave in ("mapeamentos", "confidence", "warnings"):
+        if chave not in dados:
+            erros.append(f"Chave obrigatoria ausente: {chave}")
+
+    if erros:
+        return ResultadoValidacaoMapa(ok=False, erros=erros)
+
+    mapeamentos_raw = dados.get("mapeamentos")
+    if not isinstance(mapeamentos_raw, list):
+        return ResultadoValidacaoMapa(
+            ok=False,
+            erros=["mapeamentos deve ser uma lista."],
+        )
+
+    warnings_raw = dados.get("warnings", [])
+    warnings: List[str] = []
+    if isinstance(warnings_raw, list):
+        for item in warnings_raw:
+            if isinstance(item, str):
+                warnings.append(item)
+            else:
+                erros.append("warnings deve conter apenas strings.")
+    else:
+        erros.append("warnings deve ser list[str].")
+
+    try:
+        confianca = float(dados.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confianca = 0.0
+        erros.append("confidence deve ser numerico.")
+
+    if confianca < 0.0 or confianca > 1.0:
+        erros.append(f"confidence fora de [0,1]: {confianca}")
+
+    mapa: Dict[str, str] = {}
+    canonicos_usados: Dict[str, str] = {}
+
+    for idx, item in enumerate(mapeamentos_raw):
+        if not isinstance(item, dict):
+            erros.append(f"mapeamentos[{idx}] nao e objeto.")
+            continue
+
+        source = item.get("source_column")
+        canonical = item.get("canonical_name")
+        conf_item = item.get("confidence", 0.0)
+        role = item.get("role", "other")
+
+        if not isinstance(source, str) or not source:
+            erros.append(f"mapeamentos[{idx}].source_column invalido.")
+            continue
+        if source not in colunas_set:
+            erros.append(
+                f"source_column inexistente no dataset: {source}"
+            )
+            continue
+
+        if not isinstance(canonical, str) or not canonical:
+            erros.append(f"mapeamentos[{idx}].canonical_name invalido.")
+            continue
+
+        can_norm = lookup.get(canonical.lower())
+        if can_norm is None:
+            erros.append(
+                f"canonical_name fora do schema: {canonical}"
+            )
+            continue
+
+        try:
+            conf_f = float(conf_item)
+        except (TypeError, ValueError):
+            erros.append(
+                f"mapeamentos[{idx}].confidence invalido."
+            )
+            continue
+        if conf_f < 0.0 or conf_f > 1.0:
+            erros.append(
+                f"mapeamentos[{idx}].confidence fora de [0,1]."
+            )
+            continue
+
+        if not isinstance(role, str) or role not in ROLES_VALIDOS:
+            erros.append(
+                f"mapeamentos[{idx}].role invalido: {role}"
+            )
+            continue
+
+        if can_norm in canonicos_usados and canonicos_usados[can_norm] != source:
+            erros.append(
+                f"canonical_name duplicado: {can_norm} "
+                f"({canonicos_usados[can_norm]} e {source})"
+            )
+            continue
+
+        if source in mapa and mapa[source] != can_norm:
+            erros.append(
+                f"source_column mapeada duas vezes: {source}"
+            )
+            continue
+
+        mapa[source] = can_norm
+        canonicos_usados[can_norm] = source
+
+    if not mapa:
+        erros.append("mapeamentos vazio ou nenhum item valido.")
+
+    return ResultadoValidacaoMapa(
+        ok=len(erros) == 0,
+        erros=erros,
+        mapa=mapa if len(erros) == 0 else {},
+        confianca=confianca if len(erros) == 0 else 0.0,
+        warnings=warnings,
+    )
+
+
+def aplicar_confidence_gate(
+    confianca: float,
+    limiar: float = LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+) -> bool:
+    """
+    Confidence gate do DataShield Nivel 1.
+
+    Args:
+        confianca: score em [0, 1].
+        limiar: limiar minimo (default 0.6).
+
+    Returns:
+        True se confianca >= limiar.
+    """
+    return confianca >= limiar
+
+
+def _mesclar_mapas(
+    base: Dict[str, str],
+    extra: Dict[str, str],
+) -> Dict[str, str]:
+    """Mescla mapas; extra nao sobrescreve chaves ja presentes em base."""
+    mesclado = dict(base)
+    for src, can in extra.items():
+        if src not in mesclado:
+            if can in mesclado.values():
+                continue
+            mesclado[src] = can
+    return mesclado
+
+
+def _mapa_para_result(
+    mapa: Dict[str, str],
+    nomes_colunas: Sequence[str],
+    confianca: float,
+    warnings: List[str],
+    origem: str,
+    limiar_gate: float,
+    json_bruto: str = "",
+) -> MapaSemResult:
+    """Monta MapaSemResult a partir de mapa flat."""
+    mapeadas = [c for c in nomes_colunas if str(c) in mapa]
+    nao_mapeadas = [str(c) for c in nomes_colunas if str(c) not in mapa]
+    gate_ok = aplicar_confidence_gate(confianca, limiar_gate)
+    warns = list(warnings)
+    if not gate_ok:
+        warns.append(
+            f"confidence gate falhou: {confianca:.2f} < limiar {limiar_gate:.2f}"
+        )
+    return MapaSemResult(
+        mapa=mapa,
+        colunas_mapeadas=mapeadas,
+        colunas_nao_mapeadas=nao_mapeadas,
+        confianca=round(confianca, 4),
+        warnings=warns,
+        origem=origem,
+        gate_ok=gate_ok,
+        json_bruto=json_bruto,
+    )
+
+
+def inferir_mapa_semantico(
+    perfil: PerfilDataset,
+    schema_canonico: Optional[Dict[str, Dict[str, str]]] = None,
+    api_key: str = "",
+    model: str = "gpt-4o-mini",
+    colunas_ja_mapeadas: Optional[Dict[str, str]] = None,
+    colunas_pendentes: Optional[Sequence[str]] = None,
+    registrar_log: Optional[Callable[[str], None]] = None,
+    client: Optional[Any] = None,
+) -> Tuple[MapaSemResult, str]:
+    """
+    Infere mapa semantico via LLM (Nivel 1).
+
+    Args:
+        perfil: perfil do dataset.
+        schema_canonico: schema alvo.
+        api_key: chave OpenAI (ignorada se client for injetado).
+        model: modelo OpenAI.
+        colunas_ja_mapeadas: mapa deterministico previo.
+        colunas_pendentes: colunas a inferir.
+        registrar_log: callback de log.
+        client: cliente OpenAI injetavel (testes).
+
+    Returns:
+        Tupla (MapaSemResult parcial so do LLM, json_bruto).
+        Em falha apos retries, retorna mapa vazio com warnings.
+    """
+    def log(msg: str) -> None:
+        if registrar_log is not None:
+            registrar_log(msg)
+
+    if schema_canonico is None:
+        schema_canonico = SCHEMA_CANONICO_MONDELEZ
+
+    payload = montar_payload_llm(
+        perfil,
+        schema_canonico=schema_canonico,
+        colunas_ja_mapeadas=colunas_ja_mapeadas,
+        colunas_pendentes=colunas_pendentes,
+    )
+    if "dataset" in payload or "dataframe" in payload:
+        raise ValueError("Payload LLM nao pode conter dataset completo.")
+
+    user_content = (
+        "Mapeie as colunas pendentes para o schema canonico.\n\n"
+        f"{json.dumps(payload, ensure_ascii=True, indent=2)}"
+    )
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": SYSTEM_INFERIR_MAPA},
+        {"role": "user", "content": user_content},
+    ]
+
+    if client is None:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+    json_bruto = ""
+    log(f"DataShield LLM: inferir_mapa_semantico modelo={model}")
+
+    for tentativa in range(MAX_RETRIES_JSON_MAPA + 1):
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=messages,
+        )
+        content = response.choices[0].message.content
+        if content is None:
+            if tentativa < MAX_RETRIES_JSON_MAPA:
+                messages.append({
+                    "role": "user",
+                    "content": "Retorne APENAS um objeto JSON completo.",
+                })
+                continue
+            break
+
+        json_bruto = content
+        log(f"DataShield LLM JSON tentativa {tentativa + 1}")
+
+        try:
+            dados = json.loads(content)
+        except json.JSONDecodeError:
+            if tentativa < MAX_RETRIES_JSON_MAPA:
+                messages.append({
+                    "role": "user",
+                    "content": "JSON invalido. Retorne APENAS JSON valido.",
+                })
+                continue
+            break
+
+        if not isinstance(dados, dict):
+            if tentativa < MAX_RETRIES_JSON_MAPA:
+                messages.append({
+                    "role": "user",
+                    "content": "Retorne um objeto JSON (nao lista).",
+                })
+                continue
+            break
+
+        validacao = validar_mapa_semantico(
+            dados,
+            perfil.nomes_colunas,
+            schema_canonico=schema_canonico,
+        )
+        if not validacao.ok:
+            if tentativa < MAX_RETRIES_JSON_MAPA:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Validacao falhou: "
+                        + "; ".join(validacao.erros)
+                        + ". Corrija e retorne JSON completo."
+                    ),
+                })
+                continue
+            vazio = _mapa_para_result(
+                {},
+                perfil.nomes_colunas,
+                0.0,
+                validacao.erros,
+                "llm_falha",
+                LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+                json_bruto=json_bruto,
+            )
+            return vazio, json_bruto
+
+        resultado = _mapa_para_result(
+            validacao.mapa,
+            perfil.nomes_colunas,
+            validacao.confianca,
+            validacao.warnings,
+            "llm",
+            LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+            json_bruto=json_bruto,
+        )
+        return resultado, json_bruto
+
+    falha = _mapa_para_result(
+        {},
+        perfil.nomes_colunas,
+        0.0,
+        ["LLM esgotou retries de JSON/validacao."],
+        "llm_falha",
+        LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+        json_bruto=json_bruto,
+    )
+    return falha, json_bruto
+
+
+def mapear_semantico_hibrido(
+    perfil: PerfilDataset,
+    schema_canonico: Optional[Dict[str, Dict[str, str]]] = None,
+    api_key: str = "",
+    model: str = "gpt-4o-mini",
+    limiar_gate: float = LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+    forcar_llm: bool = False,
+    registrar_log: Optional[Callable[[str], None]] = None,
+    client: Optional[Any] = None,
+) -> MapaSemResult:
+    """
+    Fluxo hibrido Nivel 1: deterministico primeiro, LLM residual.
+
+    Chama LLM se:
+      - houver colunas nao mapeadas, ou
+      - confianca deterministica < limiar, ou
+      - forcar_llm=True.
+
+    Se nao houver api_key/client e LLM for necessario, mantem
+    resultado deterministico com warning.
+
+    Args:
+        perfil: perfil do dataset.
+        schema_canonico: schema alvo.
+        api_key: chave OpenAI.
+        model: modelo.
+        limiar_gate: limiar do confidence gate.
+        forcar_llm: forca chamada LLM mesmo com match completo.
+        registrar_log: callback de log.
+        client: cliente OpenAI injetavel.
+
+    Returns:
+        MapaSemResult consolidado.
+    """
+    def log(msg: str) -> None:
+        if registrar_log is not None:
+            registrar_log(msg)
+
+    det = mapear_semantico_deterministico(
+        perfil.nomes_colunas,
+        schema_canonico=schema_canonico,
+    )
+
+    precisa_llm = (
+        forcar_llm
+        or len(det.colunas_nao_mapeadas) > 0
+        or det.confianca < limiar_gate
+    )
+
+    if not precisa_llm:
+        log("DataShield: mapeamento deterministico suficiente.")
+        return _mapa_para_result(
+            det.mapa,
+            perfil.nomes_colunas,
+            det.confianca,
+            det.warnings,
+            "deterministico",
+            limiar_gate,
+        )
+
+    if client is None and not api_key:
+        log(
+            "DataShield: LLM necessario mas sem api_key/client; "
+            "mantendo mapa deterministico."
+        )
+        warns = list(det.warnings)
+        warns.append(
+            "LLM nao acionado (sem credencial); mapa apenas deterministico."
+        )
+        return _mapa_para_result(
+            det.mapa,
+            perfil.nomes_colunas,
+            det.confianca,
+            warns,
+            "deterministico_sem_llm",
+            limiar_gate,
+        )
+
+    log(
+        f"DataShield: acionando LLM para "
+        f"{len(det.colunas_nao_mapeadas)} coluna(s) pendente(s)."
+    )
+    llm_result, json_bruto = inferir_mapa_semantico(
+        perfil,
+        schema_canonico=schema_canonico,
+        api_key=api_key,
+        model=model,
+        colunas_ja_mapeadas=det.mapa,
+        colunas_pendentes=det.colunas_nao_mapeadas,
+        registrar_log=registrar_log,
+        client=client,
+    )
+
+    if llm_result.origem == "llm_falha" or not llm_result.mapa:
+        warns = list(det.warnings) + list(llm_result.warnings)
+        warns.append("Fallback: mantido mapa deterministico apos falha LLM.")
+        return _mapa_para_result(
+            det.mapa,
+            perfil.nomes_colunas,
+            det.confianca,
+            warns,
+            "hibrido_fallback_det",
+            limiar_gate,
+            json_bruto=json_bruto,
+        )
+
+    mesclado = _mesclar_mapas(det.mapa, llm_result.mapa)
+    # Recomputa confianca pela cobertura do mapa mesclado.
+    total = len(perfil.nomes_colunas)
+    total_canonico = len(_lookup_canonico(schema_canonico))
+    n_map = len(mesclado)
+    if total == 0:
+        conf_final = 0.0
+    else:
+        cobertura_dataset = n_map / total
+        cobertura_schema = (
+            n_map / total_canonico if total_canonico > 0 else 0.0
+        )
+        conf_cobertura = (cobertura_dataset + cobertura_schema) / 2.0
+        # Usa o max entre cobertura e confianca do LLM quando o merge
+        # resolveu pendencias com sucesso.
+        conf_final = max(conf_cobertura, llm_result.confianca)
+    warns = list(det.warnings) + list(llm_result.warnings)
+    warns.append(
+        f"Mapa hibrido: {len(det.mapa)} det + "
+        f"{len(llm_result.mapa)} llm -> {len(mesclado)} total."
+    )
+    return _mapa_para_result(
+        mesclado,
+        perfil.nomes_colunas,
+        conf_final,
+        warns,
+        "hibrido",
+        limiar_gate,
+        json_bruto=json_bruto,
     )
 
 
@@ -392,19 +998,31 @@ def normalizar_dataset(
 def processar_arquivo(
     caminho: str,
     schema_canonico: Optional[Dict[str, Dict[str, str]]] = None,
+    api_key: str = "",
+    model: str = "gpt-4o-mini",
+    limiar_gate: float = LIMIAR_CONFIANCA_DATASHIELD_DEFAULT,
+    usar_llm: bool = True,
+    registrar_log: Optional[Callable[[str], None]] = None,
+    client: Optional[Any] = None,
 ) -> Dict[str, object]:
     """
-    Pipeline completo DataShield Lite (Nivel 1 deterministico).
+    Pipeline completo DataShield Lite (Nivel 1 hibrido).
 
     1. Le o arquivo
     2. Gera perfil
     3. Gera amostra
-    4. Faz mapeamento semantico deterministico
-    5. Retorna tudo para o Nexus decidir HITL
+    4. Mapeamento hibrido (deterministico + LLM residual)
+    5. Retorna tudo para o Nexus decidir HITL / gate
 
     Args:
         caminho: caminho do arquivo CSV/XLSX.
         schema_canonico: schema canonico (default: Mondelez).
+        api_key: chave OpenAI para inferencia residual.
+        model: modelo OpenAI.
+        limiar_gate: limiar do confidence gate.
+        usar_llm: se False, forca apenas deterministico.
+        registrar_log: callback de log.
+        client: cliente OpenAI injetavel (testes).
 
     Returns:
         Dict com df, perfil, amostra, mapa e status.
@@ -412,10 +1030,30 @@ def processar_arquivo(
     df = ler_arquivo(caminho)
     perfil = gerar_perfil(df)
     amostra = amostrar(df, n=5)
-    mapa_result = mapear_semantico_deterministico(
-        perfil.nomes_colunas,
-        schema_canonico=schema_canonico,
-    )
+
+    if usar_llm:
+        mapa_result = mapear_semantico_hibrido(
+            perfil,
+            schema_canonico=schema_canonico,
+            api_key=api_key,
+            model=model,
+            limiar_gate=limiar_gate,
+            registrar_log=registrar_log,
+            client=client,
+        )
+    else:
+        det = mapear_semantico_deterministico(
+            perfil.nomes_colunas,
+            schema_canonico=schema_canonico,
+        )
+        mapa_result = _mapa_para_result(
+            det.mapa,
+            perfil.nomes_colunas,
+            det.confianca,
+            det.warnings,
+            "deterministico",
+            limiar_gate,
+        )
 
     return {
         "df": df,
@@ -424,4 +1062,5 @@ def processar_arquivo(
         "mapa": mapa_result,
         "nivel_adaptacao": 1,
         "schema_confirmado": False,
+        "gate_ok": mapa_result.gate_ok,
     }

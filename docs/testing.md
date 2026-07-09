@@ -338,9 +338,9 @@ Resultado esperado:
 
 ---
 
-### 6.4 Prompt futuro `datashield.inferir_mapa_semantico`
+### 6.4 Prompt `datashield.inferir_mapa_semantico` (implementado)
 
-Testar com mock:
+Testar com mock (`tests/test_datashield_llm.py`):
 
 ```text
 Schema claro
@@ -349,19 +349,22 @@ JSON invalido
 source_column inexistente
 canonical_name invalido
 confidence fora da faixa
-metricas vazias
+mapeamentos vazios
 warnings nao lista
 colunas extras nao mapeadas
+payload sem dataset completo
+hibrido deterministico + LLM
 ```
 
 Resultado esperado:
 
 * schema claro passa;
-* schema ambiguo pede confirmacao humana;
+* schema ambiguo pede confirmacao humana / gate;
 * JSON invalido dispara retry;
 * colunas inexistentes bloqueiam normalizacao;
-* confidence baixo bloqueia avanco automatico;
-* colunas extras sao listadas em warnings.
+* confidence baixo bloqueia avanco automatico (`HITL_MODE=auto`);
+* colunas extras sao listadas em warnings;
+* fixture Mondelez nao chama LLM (match deterministico suficiente).
 
 ### 6.5 Prompt futuro `datashield.gerar_script_etl` (ADR-0021)
 

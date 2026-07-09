@@ -214,7 +214,8 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 
 | Componente | Status | Fase | ADR |
 |---|---|---|---|
-| DataShield Lite (3 niveis) | Planejado | Fase 1.5 | ADR-0020 |
+| DataShield Lite Nivel 1 (hibrido) | Implementado | Fase 1.5.2 | ADR-0005/0020 |
+| DataShield Lite (3 niveis) | Parcial (N1 ok; N2/N3 planejado) | Fase 1.5 | ADR-0020 |
 | HITL Streamlit (demo EY) | Planejado | Fase 1.5c | ADR-0022 |
 | Tools parametrizadas Mondelez | Planejado | Fase 1.5b | ADR-0019 |
 | Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |

@@ -38,6 +38,7 @@ Estes arquivos sao a fonte de verdade do desenvolvimento.
 | `docs/architecture.md`              | Spec da arquitetura             | ANTES de mudar arquitetura, fluxo, contratos, guardrails ou tipos de decisao |
 | `docs/planning.md`                  | Checklist de implementacao      | Ao iniciar, concluir, dividir ou cancelar itens                              |
 | `docs/agent.log.md`                 | Historico de decisoes e sessoes | Ao final de toda sessao significativa                                        |
+| `docs/sense_to_respond_modelagem.tex` | Modelagem matematica formal   | SEMPRE que o comportamento implementado mudar (ver secao 2.1)                |
 | `rules.md`                          | Regras humanas completas        | Quando regras de desenvolvimento mudarem                                     |
 | `.cursor/rules/spec-driven-dev.mdc` | Regras curtas para Cursor IDE   | Sempre que `rules.md` mudar                                                  |
 | `docs/contracts/state_contract.md`  | Contrato do state blackboard    | Quando campos do state mudarem                                               |
@@ -45,6 +46,24 @@ Estes arquivos sao a fonte de verdade do desenvolvimento.
 | `docs/prompts.md`                   | Contratos dos prompts LLM       | Quando prompts, schemas JSON ou fallbacks mudarem                            |
 | `docs/testing.md`                   | Guia de testes                  | Quando criterios de teste mudarem                                            |
 | `docs/adr/`                         | Decisoes arquiteturais formais  | Quando uma decisao arquitetural relevante for tomada                         |
+
+### 2.1 Modelagem LaTeX sempre atualizada
+
+O arquivo `docs/sense_to_respond_modelagem.tex` (e o PDF gerado) e a
+formalizacao matematica do que o repositorio **implementa**.
+
+Regras obrigatorias:
+
+1. Ao concluir uma mudanca de comportamento em `*.py`, contratos, prompts
+   ou thresholds, atualizar o `.tex` **na mesma sessao**.
+2. Recompilar o PDF (`pdflatex docs/sense_to_respond_modelagem.tex`) apos
+   editar o `.tex`.
+3. Modelar apenas o implementado; o planejado vai em "Proximos Passos"
+   (ou equivalente), nunca como invariante.
+4. Nao marcar o item como `[x]` em `planning.md` se a modelagem estiver
+   desatualizada em relacao ao codigo entregue.
+5. Caracteres no `.tex`: manter convencao ASCII com escapes LaTeX
+   (`\'e`, `\c{c}`, etc.) alinhada ao restante do documento.
 
 ---
 
@@ -61,9 +80,11 @@ Antes de alterar codigo, o agente IA deve:
 7. Verificar se a spec precisa ser atualizada antes do codigo.
 8. Implementar o menor incremento seguro.
 9. Rodar os testes exigidos.
-10. Atualizar `docs/planning.md` apenas se criterios de aceite passarem.
-11. Atualizar `docs/agent.log.md` ao final.
-12. Se houve mudanca arquitetural, atualizar `docs/architecture.md` antes do codigo.
+10. Se o comportamento do pipeline mudou, atualizar
+    `docs/sense_to_respond_modelagem.tex` e recompilar o PDF (secao 2.1).
+11. Atualizar `docs/planning.md` apenas se criterios de aceite passarem.
+12. Atualizar `docs/agent.log.md` ao final.
+13. Se houve mudanca arquitetural, atualizar `docs/architecture.md` antes do codigo.
 
 ---
 

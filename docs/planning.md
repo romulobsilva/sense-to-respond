@@ -150,19 +150,22 @@ Bloco E (adiado, so se Nivel 1 nao resolver):
 Inferencia semantica de xlsx/csv sem schema fixo. 3 niveis de adaptacao (ADR-0020).
 
 ### 1.5.1 Leitura de arquivos
-- [ ] Criar `datashield.py` com classe `DataShield`
-- [ ] Aceitar upload de xlsx e csv (argumento CLI `--input`)
-- [ ] `ler_arquivo(caminho) -> pd.DataFrame` em `datashield.py`
-- [ ] `gerar_perfil(df) -> dict` em `datashield.py` (tipo, nulos, unicos por coluna)
-- [ ] `amostrar(df, n=5) -> list[dict]` em `datashield.py`
+- [x] Criar `datashield.py` com funcoes DataShield (sem classe obrigatoria)
+- [x] Aceitar upload de xlsx e csv (argumento CLI `--input`)
+- [x] `ler_arquivo(caminho) -> pd.DataFrame` em `datashield.py`
+- [x] `gerar_perfil(df) -> PerfilDataset` em `datashield.py`
+- [x] `amostrar(df, n=5) -> list[dict]` em `datashield.py`
 
 ### 1.5.2 Inferencia semantica via LLM (Nivel 1)
-- [ ] `inferir_mapa_semantico(perfil, amostra, schema_canonico) -> dict` em `datashield.py` (llm_tool)
-- [ ] Prompt conforme `docs/prompts.md` secao 8 (schema de saida definido)
-- [ ] Campos obrigatorios na saida: temporal, canal, produto, metricas, dimensoes, confidence, warnings
-- [ ] JSON validate com retry (max 2 tentativas)
-- [ ] Confidence gate: confianca >= 0.6 para prosseguir
-- [ ] Detectar colunas extras nao mapeadas (lista em warnings)
+- [x] `inferir_mapa_semantico(perfil, ...) -> MapaSemResult` em `datashield.py` (llm_tool)
+- [x] Prompt conforme `docs/prompts.md` secao 8 (schema Mondelez alinhado)
+- [x] Campos obrigatorios na saida: mapeamentos, confidence, warnings
+- [x] JSON validate com retry (max 2 tentativas)
+- [x] Confidence gate: confianca >= 0.6 (`LIMIAR_CONFIANCA_DATASHIELD`)
+- [x] Detectar colunas extras nao mapeadas (lista em warnings)
+- [x] Fluxo hibrido: deterministico primeiro, LLM residual
+- [x] `validar_mapa_semantico` + `montar_payload_llm` (ADR-0009)
+- [x] Testes mock em `tests/test_datashield_llm.py`
 
 ### 1.5.2b Geracao de ETL (Nivel 2 - ADR-0021) -- ADIADO para apos validacao do Nivel 1
 - [ ] `gerar_script_etl(perfil, schema_canonico, diagnostico) -> dict` em `datashield.py` (llm_tool)

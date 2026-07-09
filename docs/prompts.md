@@ -530,24 +530,32 @@ fallback
 
 ---
 
-## 8. Prompt planejado: `datashield.inferir_mapa_semantico`
+## 8. Prompt: `datashield.inferir_mapa_semantico` (Nivel 1)
 
 ### 8.1 Identificacao
 
-```text id="8vdtu8"
+```text
 prompt_name: datashield.inferir_mapa_semantico
-prompt_version: 0.1.0
-arquivo planejado: datashield.py
-funcao planejada: inferir_mapa_semantico
+prompt_version: 1.0.0
+arquivo: datashield.py
+funcao: inferir_mapa_semantico
 tipo: inferencia semantica
-status: planejado
+status: implementado (Nivel 1 hibrido)
 ```
 
 ---
 
 ### 8.2 Objetivo
 
-Inferir o papel semantico das colunas de um arquivo tabular, para permitir normalizacao para schema canonico.
+Inferir o papel semantico das colunas de um arquivo tabular para
+normalizacao ao schema canonico (Mondelez ou `SCHEMA_PATH`).
+O LLM nao calcula metricas e nao altera valores.
+
+Fluxo hibrido:
+1. Match deterministico (exact case-insensitive)
+2. LLM apenas para colunas nao mapeadas / baixa cobertura
+3. Validacao deterministica do JSON
+4. Confidence gate + HITL
 
 ---
 
@@ -555,19 +563,19 @@ Inferir o papel semantico das colunas de um arquivo tabular, para permitir norma
 
 O prompt pode receber:
 
-```text id="sx69yu"
+```text
 nomes de colunas
 tipos inferidos
 percentual de nulos
 quantidade de valores unicos
-amostra limitada de valores
-pergunta do usuario
-schema canonico esperado
+amostra limitada de valores (max 5 por coluna)
+lista de colunas canonicas permitidas (com descricao)
+colunas ja mapeadas pelo match deterministico (opcional)
 ```
 
 O prompt nao pode receber:
 
-```text id="qvs72d"
+```text
 dataset completo
 dados sensiveis integrais
 arquivos brutos
@@ -578,43 +586,36 @@ segredos
 
 ### 8.4 Saida esperada
 
-JSON obrigatorio:
+JSON obrigatorio (alinhado ao schema Mondelez / `SCHEMA_CANONICO_*`):
 
-```json id="gplk38"
+```json
 {
-  "temporal": [
+  "mapeamentos": [
     {
-      "canonical_name": "periodo",
+      "canonical_name": "Date",
       "source_column": "semana",
       "confidence": 0.92,
       "role": "temporal"
-    }
-  ],
-  "canal": [
+    },
     {
-      "canonical_name": "canal",
+      "canonical_name": "Channel",
       "source_column": "canal_venda",
       "confidence": 0.88,
       "role": "dimension"
-    }
-  ],
-  "produto": [
+    },
     {
-      "canonical_name": "sku",
+      "canonical_name": "SKU_Code",
       "source_column": "cod_produto",
       "confidence": 0.91,
       "role": "product"
-    }
-  ],
-  "metricas": [
+    },
     {
-      "canonical_name": "volume_real",
+      "canonical_name": "SellOut_Actual_Ton",
       "source_column": "vol_cx",
       "confidence": 0.86,
       "role": "metric"
     }
   ],
-  "dimensoes": [],
   "confidence": 0.87,
   "warnings": []
 }
@@ -624,47 +625,52 @@ JSON obrigatorio:
 
 ### 8.5 Schema
 
-Campos obrigatorios:
+Campos obrigatorios no JSON raiz:
 
-```text id="g36q4e"
-temporal
-canal
-produto
-metricas
-dimensoes
+```text
+mapeamentos
 confidence
 warnings
 ```
 
-Cada campo mapeado deve conter:
+Cada item de `mapeamentos` deve conter:
 
-```text id="4wtdhs"
+```text
 canonical_name
 source_column
 confidence
 role
 ```
 
+`role` permitido: `temporal`, `dimension`, `product`, `metric`, `tag`, `other`.
+
 Regras:
 
-```text id="99t4vr"
-confidence deve estar entre 0.0 e 1.0
+```text
+confidence (raiz e item) deve estar entre 0.0 e 1.0
 source_column deve existir no DataFrame
 canonical_name deve pertencer ao schema canonico permitido
-metricas deve ter pelo menos um item para prosseguir
+mapeamentos deve ter pelo menos um item valido para prosseguir
 warnings deve ser list[str]
+um canonical_name nao pode ser alvo de duas source_column
 ```
+
+Apos validacao, o harness converte para mapa flat
+`{source_column: canonical_name}` consumido por `normalizar_dataset`.
 
 ---
 
 ### 8.6 Confidence gate
 
-```text id="lbnrps"
+```text
+LIMIAR_CONFIANCA_DATASHIELD default = 0.6
+
 Se confidence >= 0.6:
-    pode prosseguir se modo automatico permitir.
+    pode prosseguir (HITL ainda confirma no fluxo interativo).
 
 Se confidence < 0.6:
-    bloquear avanco automatico e pedir confirmacao/correcao humana.
+    bloquear avanco automatico (HITLAutoApprove);
+    no modo interativo, exigir confirmacao/correcao humana.
 ```
 
 ---
@@ -673,14 +679,15 @@ Se confidence < 0.6:
 
 O LLM nao pode:
 
-```text id="af6e9x"
+```text
 renomear coluna inexistente
-criar coluna nova
+criar coluna nova no DataFrame
 alterar valor numerico
 imputar dado
 calcular metrica
 decidir proposicao operacional
-prosseguir sem validacao
+prosseguir sem validacao deterministica
+receber dataset completo
 ```
 
 ---
@@ -689,17 +696,18 @@ prosseguir sem validacao
 
 Testar com mock:
 
-```text id="xyygd9"
+```text
 schema claro
 schema ambiguo
 source_column inexistente
 confidence baixa
 confidence fora de faixa
-metricas vazias
+mapeamentos vazios
 JSON invalido
 warnings nao lista
 retry
-fallback
+fallback deterministico
+payload sem dataset completo
 ```
 
 ---
