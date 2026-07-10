@@ -562,3 +562,68 @@ class TestResumirPorCategoria:
         df = pd.DataFrame({"x": [1]})
         resultado = resumir_por_categoria(df, {})
         assert resultado["resumo_categorias"] == []
+
+
+class TestJanelaRecenteSnapshot:
+    """Snapshot SO/SI/DOI respeita janela recente (anti-historico)."""
+
+    def test_janela_exclui_serie_antiga(self) -> None:
+        """
+        SKU so com dados antigos some do snapshot quando janela e curta.
+        Regra generica por Date, sem ScenarioTag.
+        """
+        rows = [
+            {
+                "Date": "2026-01-01",
+                "SKU_Code": "OLD-SKU",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Candy",
+                "Brand": "OldBrand",
+                "SellOut_Plan_Ton": 100.0,
+                "SellOut_Actual_Ton": 200.0,
+                "SellOut_Actual_NR_USD": 50000.0,
+                "SellIn_Plan_Ton": 100.0,
+                "SellIn_Actual_Ton": 200.0,
+                "SellIn_Actual_NR_USD": 50000.0,
+                "DOI_Plan_Days": 30.0,
+                "DOI_Actual_Days": 60.0,
+            },
+            {
+                "Date": "2026-05-20",
+                "SKU_Code": "NEW-SKU",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Biscuits",
+                "Brand": "NewBrand",
+                "SellOut_Plan_Ton": 10.0,
+                "SellOut_Actual_Ton": 12.0,
+                "SellOut_Actual_NR_USD": 1000.0,
+                "SellIn_Plan_Ton": 10.0,
+                "SellIn_Actual_Ton": 11.0,
+                "SellIn_Actual_NR_USD": 1000.0,
+                "DOI_Plan_Days": 30.0,
+                "DOI_Actual_Days": 28.0,
+            },
+        ]
+        df = pd.DataFrame(rows)
+        mapa = {c: c for c in df.columns}
+
+        sem_filtro = analisar_sellout(df, mapa)
+        skus_sem = {d["sku"] for d in sem_filtro["desvios"]}
+        assert "OLD-SKU" in skus_sem
+        assert "NEW-SKU" in skus_sem
+
+        com_janela = analisar_sellout(
+            df, mapa, janela_recente_dias=30, data_corte="2026-05-20"
+        )
+        skus_com = {d["sku"] for d in com_janela["desvios"]}
+        assert "OLD-SKU" not in skus_com
+        assert "NEW-SKU" in skus_com
+
+        doi_janela = analisar_doi(
+            df, mapa, janela_recente_dias=30, data_corte="2026-05-20"
+        )
+        skus_doi = {d["sku"] for d in doi_janela["desvios"]}
+        assert "OLD-SKU" not in skus_doi
+        assert "NEW-SKU" in skus_doi

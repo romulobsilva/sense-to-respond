@@ -30,7 +30,11 @@ from hitl import (
     HITLAutoApprove,
     PedidoAprovacao,
 )
-from optimus import gerar_proposicoes, proposicoes_para_state
+from optimus import (
+    _impacto_priorizado,
+    gerar_proposicoes,
+    proposicoes_para_state,
+)
 from sinais import extrair_sinais_de_resultados
 from state_types import (
     criar_state_inicial,
@@ -310,19 +314,25 @@ class Nexus:
         resultados: Dict[str, Any] = {}
 
         if "sellout" in caps:
-            res_so = analisar_sellout(df, mapa)
+            res_so = analisar_sellout(
+                df, mapa, thresholds=self.settings.thresholds
+            )
             resultados["analise_sellout"] = res_so
             n_desvios = len(res_so.get("desvios", []))
             self._log(f"Sellout: {n_desvios} desvio(s) calculado(s)")
 
         if "sellin" in caps:
-            res_si = analisar_sellin(df, mapa)
+            res_si = analisar_sellin(
+                df, mapa, thresholds=self.settings.thresholds
+            )
             resultados["analise_sellin"] = res_si
             n_desvios = len(res_si.get("desvios", []))
             self._log(f"Sellin: {n_desvios} desvio(s) calculado(s)")
 
         if "doi" in caps:
-            res_doi = analisar_doi(df, mapa)
+            res_doi = analisar_doi(
+                df, mapa, thresholds=self.settings.thresholds
+            )
             resultados["analise_doi"] = res_doi
             n_desvios = len(res_doi.get("desvios", []))
             self._log(f"DOI: {n_desvios} desvio(s) calculado(s)")
@@ -763,6 +773,7 @@ class Nexus:
             confianca_critic=confianca,
             limiar_confianca=self.settings.limiar_confianca_critic,
             validacao_ok=validacao_ok,
+            thresholds=self.settings.thresholds,
         )
         state["fila_nexus"] = [item.para_dict() for item in fila]
         self._log(f"Fila Nexus montada: {len(fila)} itens")
@@ -793,7 +804,14 @@ class Nexus:
 
         top_props = sorted(
             proposicoes,
-            key=lambda p: p.impacto_financeiro,
+            key=lambda p: (
+                _impacto_priorizado(
+                    p.impacto_financeiro,
+                    p.tipo,
+                    self.settings.thresholds,
+                ),
+                -p.urgencia_horas,
+            ),
             reverse=True,
         )[:MAX_PROPOSICOES_EXPLICACAO]
         contexto_props = "\n".join(

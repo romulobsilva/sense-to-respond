@@ -54,9 +54,11 @@ escreva uma explicacao executiva clara em portugues. Siga estas regras:
 
 1. Comece com visao geral (desvio medio SO, SI, DOI).
 2. PRIORIZE os ALERTAS FORWARD quando presentes:
-   - OPORTUNIDADE: SO acima do plano + DOI saudavel. Plano subdimensionado.
+   - OPORTUNIDADE: SO acima do plano + DOI na faixa saudavel
+     (entre limiar de ruptura e overstock). Plano subdimensionado.
      Aumentar sell-in para capturar demanda. NAO classificar como ruptura.
-   - RUPTURA: DOI baixo + SO subindo + plano forward nao cobre.
+   - RUPTURA: DOI abaixo do limiar de ruptura + SO acima do plano
+     (mesmo se o plano forward estiver curto).
    - OVERSTOCK: DOI alto e subindo, plano forward ainda empurra estoque.
    - GAP_PLANO: plano forward assume reversao de tendencia sem evidencia.
 3. Mencione a TENDENCIA DOI: quais SKUs estao piorando vs melhorando.
@@ -74,7 +76,7 @@ escreva uma explicacao executiva clara em portugues. Siga estas regras:
    - DOI alto + SO desacelerando -> SEGURAR sell-in (causa-raiz: queda SO)
    - DOI alto + tendencia piorando -> SEGURAR sell-in (critico)
    - DOI alto + tendencia melhorando -> monitorar, sem acao urgente
-   - DOI baixo + SO subindo -> se plano cobre, OPORTUNIDADE; senao RUPTURA
+   - DOI baixo + SO subindo -> RUPTURA (oportunidade so com DOI saudavel)
 8. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
 9. NAO invente numeros. Use apenas os dados fornecidos no contexto.
 """

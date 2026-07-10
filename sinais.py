@@ -9,7 +9,7 @@ Tipos de sinal suportados:
   - doi_fora_politica: DOI actual vs target (dados Mondelez, ADR-0019)
   - tendencia_temporal: direcao DOI + SO recente vs anterior + ritmo variacao
   - premissa_forward_furada: plano futuro diverge da tendencia recente
-  - forward_oportunidade: SO acima + DOI baixo + plano subdimensionado
+  - forward_oportunidade: SO acima + DOI saudavel + plano subdimensionado
   - desvio_persistente: desvio no mesmo sinal por N meses consecutivos
 
 Severidade segue thresholds do S&OE Analyst Questions Script:
@@ -295,6 +295,7 @@ def extrair_sinais_de_resultados(
                         categoria=str(a.get("categoria", "")),
                         marca=str(a.get("marca", "")),
                         risco_forward=risco,
+                        nr_impacto=float(a.get("nr_impacto", 0) or 0),
                     ))
 
     if "analise_desvio_persistente" in resultados:

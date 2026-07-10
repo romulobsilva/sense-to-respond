@@ -11,7 +11,7 @@ Tipos de proposicao suportados:
     - ajustar_plano_sellin: desvio sell-in >= 5%
     - rebalancear_estoque_doi: DOI fora da politica (gap >= 7 dias)
     - questionar_premissa_plano: plano forward diverge da tendencia recente
-    - capturar_oportunidade: SO acima do plano + DOI baixo (oportunidade, nao risco)
+    - capturar_oportunidade: SO acima do plano + DOI saudavel (oportunidade, nao risco)
     - investigar_desvio_persistente: desvio no mesmo sinal por N meses
     - investigar_desvio_canal: SI e SO divergem no mesmo SKU (futuro)
 
@@ -40,6 +40,38 @@ TOLERANCIA_IMPACTO = 0.01
 
 LIMIAR_DESVIO_PCT = 5.0
 LIMIAR_DOI_GAP_DIAS = 7.0
+
+
+def _peso_prioridade(
+    tipo: str,
+    thresholds: Optional["DomainThresholds"] = None,
+) -> float:
+    """
+    Multiplicador de prioridade por tipo.
+
+    Fonte de verdade: DomainThresholds (config/.env). Sem thresholds,
+    usa defaults do dataclass.
+    """
+    if thresholds is not None:
+        return thresholds.peso_tipo(tipo)
+    from config import DomainThresholds
+
+    return DomainThresholds().peso_tipo(tipo)
+
+
+def _impacto_priorizado(
+    impacto: float,
+    tipo: str,
+    thresholds: Optional["DomainThresholds"] = None,
+) -> float:
+    """
+    Impacto usado na ordenacao: impacto financeiro * peso do tipo.
+
+    Mantem impacto_financeiro/impacto_calculado iguais ao valor bruto
+    (invariante ADR-0002); o peso so afeta a chave de sort.
+    Usado por Optimus e pela fila Nexus (mesmo criterio).
+    """
+    return round(impacto * _peso_prioridade(tipo, thresholds), 2)
 
 
 def _estimar_impacto_demanda(sinal: Sinal) -> float:
@@ -363,7 +395,12 @@ def gerar_proposicoes(
             prob_txt = "; ".join(feedback_critic)
             prop.descricao = f"{prop.descricao} [retry critic: {prob_txt}]"
 
-    proposicoes.sort(key=lambda p: (-p.impacto_financeiro, p.urgencia_horas))
+    proposicoes.sort(
+        key=lambda p: (
+            -_impacto_priorizado(p.impacto_financeiro, p.tipo, thresholds),
+            p.urgencia_horas,
+        )
+    )
     for idx, prop in enumerate(proposicoes, start=1):
         prop.proposicao_id = f"P{idx}"
 

@@ -408,7 +408,65 @@ Mondelez e permitir reutilizacao do pipeline com outros clientes/setores.
 ### Proximos passos
 - Nivel 2 ETL (sandbox + HITL script) quando Nivel 1 for validado em demo
 - Nivel 3 diagnostico de incompatibilidade
-- Investigar flakiness do assert Belvita no E2E temporal
+- Agregacao "top risks&opps do quarter" e sinais supply/CSL (script analista)
+
+---
+
+## Sessao 14 - 2026-07-09 - Priorizacao generica + fronteira DOI
+
+### Contexto
+- Veredito Mondelez: sinais certos mal ranqueados; Belvita como oportunidade;
+  historicos poluindo o topo. Pedido: ajuste minimo sem overfitting.
+
+### Decisoes
+- Fronteira por limiares DomainThresholds (nunca if sku/ScenarioTag)
+- Oportunidade so com DOI saudavel; DOI baixo + SO acima = ruptura
+- Peso de sort por tipo (1.5/1.4 forward); impacto_financeiro bruto intacto
+- Snapshot SO/SI/DOI na janela recente via Nexus+thresholds
+- NR propagado nos alertas forward
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `tools_parametrizadas.py` | janela snapshot, risco forward, NR alerta |
+| `optimus.py` | PESO_PRIORIDADE_TIPO + sort |
+| `sinais.py` / `nexus.py` / `agent.py` | NR forward, thresholds, prompt |
+| `docs/sense_to_respond_modelagem.tex` | risco, pesos, janela |
+| `tests/test_temporal.py` etc. | fronteira, peso, janela |
+
+### Testes
+- `pytest` temporal/optimus/tools/e2e: 130 passed
+- Belvita fixture: risco=ruptura (antes oportunidade)
+
+### Proximos passos
+- Top 3 risks&opps do quarter / supply-CSL
+- Validar ranking no CSV Mondelez vivo apos refresh
+- Alinhar fila Nexus ao score ponderado (detectado na sessao 14b)
+
+---
+
+## Sessao 15 - 2026-07-10 - Fila Nexus + pesos no DomainThresholds
+
+### Contexto
+- Fila HITL reordenava por R$ bruto e desfazia o boost do Optimus.
+- Usuario pediu: (1) mesmo score na fila; (2) pesos parametrizaveis no config.
+
+### Decisoes
+- Reusar `_impacto_priorizado` em `montar_fila_com_flags` e top explicacao
+- Pesos em `DomainThresholds` + `.env` (PESO_QUESTIONAR_PREMISSA etc.)
+- Defaults 1.5 / 1.4 / 1.1 mantidos; validacao peso > 0
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `config.py` / `.env.example` | pesos no DomainThresholds |
+| `optimus.py` | pesos via thresholds |
+| `guardrails.py` / `nexus.py` | fila e top explicacao com I_prio |
+| `tests/test_guardrails.py` / `test_optimus.py` | ordem + config |
+| docs architecture/planning/testing/agent.log/LaTeX | sync |
+
+### Proximos passos
+- Reexecutar CSV Mondelez e confirmar Tang forward acima do Ovo no top HITL
 
 ---
 

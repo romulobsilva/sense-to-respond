@@ -125,3 +125,81 @@ class TestMontarFila:
         p2 = _criar_proposicao_teste("P2", impacto=5000.0)
         fila = montar_fila_com_flags([p1, p2], 0.9, 0.7, validacao_ok=True)
         assert fila[0].proposicao.impacto_financeiro >= fila[1].proposicao.impacto_financeiro
+
+    def test_ordenacao_ponderada_alinha_com_optimus(self) -> None:
+        """
+        Forward com R$ menor sobe na fila se score ponderado for maior.
+        R$ bruto exibido permanece inalterado.
+        """
+        from config import DomainThresholds
+
+        snap = Proposicao(
+            proposicao_id="P-SNAP",
+            tipo="rebalancear_estoque_doi",
+            titulo="DOI snapshot",
+            descricao="gap DOI",
+            impacto_financeiro=62384.0,
+            impacto_calculado=62384.0,
+            urgencia_horas=48,
+            skus=["SKU-OVO"],
+            evidencias=["SIG-DOI-1"],
+        )
+        fwd = Proposicao(
+            proposicao_id="P-FWD",
+            tipo="questionar_premissa_plano",
+            titulo="Premissa forward",
+            descricao="RISCO DE RUPTURA",
+            impacto_financeiro=44078.0,
+            impacto_calculado=44078.0,
+            urgencia_horas=48,
+            skus=["SKU-TANG"],
+            evidencias=["SIG-FWD-1"],
+        )
+        th = DomainThresholds()
+        fila = montar_fila_com_flags(
+            [snap, fwd],
+            0.9,
+            0.7,
+            validacao_ok=True,
+            thresholds=th,
+        )
+        assert fila[0].proposicao.tipo == "questionar_premissa_plano"
+        assert fila[1].proposicao.tipo == "rebalancear_estoque_doi"
+        assert fila[0].proposicao.impacto_financeiro == 44078.0
+        assert fila[1].proposicao.impacto_financeiro == 62384.0
+
+    def test_peso_configuravel_altera_ordem_da_fila(self) -> None:
+        """Com peso forward=1.0, snapshot de maior R$ volta ao topo."""
+        from config import DomainThresholds
+
+        snap = Proposicao(
+            proposicao_id="P-SNAP",
+            tipo="rebalancear_estoque_doi",
+            titulo="DOI",
+            descricao="gap",
+            impacto_financeiro=62384.0,
+            impacto_calculado=62384.0,
+            urgencia_horas=48,
+            skus=["SKU-OVO"],
+            evidencias=["SIG-DOI-1"],
+        )
+        fwd = Proposicao(
+            proposicao_id="P-FWD",
+            tipo="questionar_premissa_plano",
+            titulo="Forward",
+            descricao="ruptura",
+            impacto_financeiro=44078.0,
+            impacto_calculado=44078.0,
+            urgencia_horas=48,
+            skus=["SKU-TANG"],
+            evidencias=["SIG-FWD-1"],
+        )
+        th = DomainThresholds(peso_questionar_premissa_plano=1.0)
+        fila = montar_fila_com_flags(
+            [snap, fwd],
+            0.9,
+            0.7,
+            validacao_ok=True,
+            thresholds=th,
+        )
+        assert fila[0].proposicao.tipo == "rebalancear_estoque_doi"

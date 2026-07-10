@@ -1220,6 +1220,11 @@ As tools \texttt{analisar\_sellout} e \texttt{analisar\_sellin} respondem
   \item \textit{``How is order entry pace?''} (sell-in)
 \end{itemize}
 
+Quando $\Theta$ (ou \texttt{janela\_recente\_dias}) \'e fornecido e existe
+coluna \texttt{Date}, o snapshot agrega apenas $W_{\text{recente}}$
+(linhas realizadas em $(t_c-w, t_c]$). Series hist\'oricas fora da
+janela n\~ao entram no ranking de impacto NR do snapshot.
+
 \begin{definicao}[Desvio Percentual]
   Para cada grupo $k \in \mathcal{K}_1$, o desvio percentual \'e:
   \[
@@ -1333,9 +1338,8 @@ mudan\c{c}a de dire\c{c}\~ao do estoque.
 \begin{definicao}[Janelas Temporais]
   Seja $t_c$ a data de corte (\'ultima data com dados realizados segundo
   o \texttt{forward\_marker} de $\Theta$) e
-  $w$ o tamanho da janela em dias (default do argumento Python $=30$;
-  $\Theta.\texttt{janela\_recente\_dias}$ ainda n\~ao \'e propagado pelo
-  Nexus -- \textbf{pr\'oximos passos}). Definimos:
+  $w = \Theta.\texttt{janela\_recente\_dias}$ (default $30$, propagado
+  pelo Nexus \`as tools de snapshot e temporais). Definimos:
   \begin{align}
     W_{\text{recente}} &= \set{d \in D \mid t_c - w < t_d \leq t_c} \\
     W_{\text{anterior}} &= \set{d \in D \mid t_c - 2w < t_d \leq t_c - w}
@@ -1460,10 +1464,10 @@ com o plano futuro para detectar premissas inconsistentes e projetar riscos.
   mais recente e tend\^encia SO recente:
   \[
     \text{risco}(k) = \begin{cases}
-      \text{oportunidade} & \text{se DOI} < \tau_r,\;
+      \text{ruptura} & \text{se } 0 < \text{DOI} < \tau_r
+        \text{ e } \Delta^{\text{SO}} > \tau_d \\
+      \text{oportunidade} & \text{se } \tau_r \leq \text{DOI} \leq \tau_o,\;
         \Delta^{\text{SO}} > \tau_d \text{ e plano subdimensionado} \\
-      \text{ruptura} & \text{se DOI} < \tau_r \text{ e }
-        \Delta^{\text{SO}} > \tau_d \\
       \text{overstock} & \text{se DOI} > \tau_o \\
       \text{gap\_plano} & \text{se premissa incoerente e nenhum dos acima} \\
       \emptyset & \text{caso contr\'ario (sem alerta)}
@@ -1472,11 +1476,12 @@ com o plano futuro para detectar premissas inconsistentes e projetar riscos.
 \end{definicao}
 
 \begin{observacao}
-  A distin\c{c}\~ao \textbf{oportunidade vs ruptura} \'e cr\'itica:
-  quando o SO est\'a acima do plano \textit{e} o plano forward est\'a
-  subdimensionado em rela\c{c}\~ao \`a tend\^encia real, trata-se de
-  oportunidade de captura de demanda, n\~ao de risco de ruptura.
-  Exemplo: Tang BR com SO acima do plano e DOI baixo.
+  A distin\c{c}\~ao \textbf{oportunidade vs ruptura} \'e cr\'itica e
+  \textbf{n\~ao depende de SKU}: DOI abaixo de $\tau_r$ com SO acima do
+  plano \'e sempre ruptura (estoque insuficiente para capturar demanda).
+  Oportunidade exige DOI na faixa saud\'avel $[\tau_r, \tau_o]$ com plano
+  forward subdimensionado. Exemplo: Belvita com DOI $\approx 8$d e SO
+  acima do plano classifica-se como ruptura, n\~ao oportunidade.
 \end{observacao}
 
 
@@ -1755,7 +1760,7 @@ O sistema produz 9 tipos de sinal no MVP:
   \texttt{doi\_fora\_politica} & analisar\_doi & $g_k$ (gap dias) & Proposi\c{c}\~ao rebalancear\_estoque\_doi \\
   \texttt{tendencia\_temporal} & analisar\_tendencia & dire\c{c}\~ao DOI + ritmo SO & Enriquecimento de causa-raiz \\
   \texttt{premissa\_forward\_furada} & analisar\_forward & diverg\^encia\% forward & Proposi\c{c}\~ao questionar\_premissa\_plano \\
-  \texttt{forward\_oportunidade} & analisar\_forward & SO $\uparrow$ + DOI baixo & Proposi\c{c}\~ao capturar\_oportunidade \\
+  \texttt{forward\_oportunidade} & analisar\_forward & SO $\uparrow$ + DOI saudavel & Proposi\c{c}\~ao capturar\_oportunidade \\
   \texttt{desvio\_persistente} & analisar\_desvio\_persistente & $n^{\text{pers}}_k$ meses & Proposi\c{c}\~ao investigar\_desvio\_persistente \\
   \texttt{desvio\_demanda} & comparacao\_demanda (legado) & demanda modelada vs real & Fluxo simulado antigo \\
   \texttt{desvio\_custo} & comparacao\_custos (legado) & custo modelado vs DRE & Fluxo simulado antigo \\
@@ -2097,15 +2102,39 @@ problema estrutural no plano.
 
 \subsection{Ordena\c{c}\~ao e Renumera\c{c}\~ao}
 
-Ap\'os gerar todas as proposi\c{c}\~oes, o Optimus ordena e renumerar IDs:
+Ap\'os gerar todas as proposi\c{c}\~oes, o Optimus ordena e renumerar IDs.
+O impacto financeiro bruto $I_f$ permanece inalterado (invariante
+ADR-0002); a ordena\c{c}\~ao usa um peso generico por tipo $w(\tau)$:
+
+\[
+  I^{\text{prio}}(\pi) = I_f(\pi) \cdot w(\pi.\tau),
+  \qquad
+  w(\tau) = \begin{cases}
+    \Theta_{\text{peso\_q}} & \texttt{questionar\_premissa\_plano}
+      \text{ (default }1.5\text{)} \\
+    \Theta_{\text{peso\_o}} & \texttt{capturar\_oportunidade}
+      \text{ (default }1.4\text{)} \\
+    \Theta_{\text{peso\_p}} & \texttt{investigar\_desvio\_persistente}
+      \text{ (default }1.1\text{)} \\
+    1.0 & \text{demais tipos}
+  \end{cases}
+\]
 
 \[
   \Pi_{\text{ord}} = \text{sort}\left(\Pi,\;
-    \text{key} = \left(-I_f(\pi),\; u(\pi)\right)\right)
+    \text{key} = \left(-I^{\text{prio}}(\pi),\; u(\pi)\right)\right)
 \]
 
 Depois da ordena\c{c}\~ao, os IDs s\~ao reatribu\'idos sequencialmente
 (\texttt{P1}, \texttt{P2}, \ldots) para refletir a prioridade final.
+
+\begin{observacao}
+  Os pesos v\^em de $\Theta$ (\texttt{PESO\_*} no \texttt{.env}) e s\~ao
+  por \textbf{tipo de proposi\c{c}\~ao}, nunca por SKU ou ScenarioTag.
+  A fila Nexus (\texttt{montar\_fila\_com\_flags}) e o top da
+  explica\c{c}\~ao LLM usam o \textbf{mesmo} $I^{\text{prio}}$, para
+  n\~ao desfazer o boost do Optimus ao reordenar s\'o por $I_f$ bruto.
+\end{observacao}
 
 
 \subsection{Retry com Feedback}
@@ -2143,7 +2172,7 @@ o Optimus pode ser reexecutado com feedback:
     \EndIf
   \EndFor
   \If{feedback presente} \State anexar feedback em $\pi.\text{desc}$ \EndIf
-  \State $\Pi_{\text{ord}} \gets \text{sort}(\Pi, \text{key}=(-I_f, u))$
+  \State $\Pi_{\text{ord}} \gets \text{sort}(\Pi, \text{key}=(-I^{\text{prio}}, u))$
   \State Renumerar IDs: \texttt{P1}, \texttt{P2}, \ldots
   \State $\state.\texttt{proposicoes} \gets \text{serializar}(\Pi_{\text{ord}})$
 \end{algorithmic}
@@ -3061,7 +3090,10 @@ com defaults Mondelez:
       \tau_{\text{acel}} \\
       n_{\text{persist}} \\
       w_{\text{janela}} \\
-      \mu_{\text{forward}}
+      \mu_{\text{forward}} \\
+      w_{\text{peso\_q}} \\
+      w_{\text{peso\_o}} \\
+      w_{\text{peso\_p}}
     \end{pmatrix}
     =
     \begin{pmatrix}
@@ -3076,7 +3108,10 @@ com defaults Mondelez:
       5.0 \\
       3 \\
       30 \\
-      \texttt{nan}
+      \texttt{nan} \\
+      1.5 \\
+      1.4 \\
+      1.1
     \end{pmatrix}_{\text{default Mondelez}}
   \]
 \end{definicao}
@@ -3107,6 +3142,9 @@ com defaults Mondelez:
   \texttt{LIMIAR\_DESVIO\_PERSISTENTE\_MESES} & $n_p$ & 3 & Meses m\'inimos para desvio persistente \\
   \texttt{JANELA\_RECENTE\_DIAS} & $w$ & 30 & Janela temporal (carregada; ver nota) \\
   \texttt{FORWARD\_MARKER} & $\mu$ & \texttt{nan} & Marcador de dados forward \\
+  \texttt{PESO\_QUESTIONAR\_PREMISSA} & $w_q$ & 1.5 & Peso ordenacao forward \\
+  \texttt{PESO\_CAPTURAR\_OPORTUNIDADE} & $w_o$ & 1.4 & Peso ordenacao oportunidade \\
+  \texttt{PESO\_INVESTIGAR\_DESVIO\_PERSISTENTE} & $w_p$ & 1.1 & Peso ordenacao persistente \\
   \bottomrule
 \end{tabular}
 \end{center}
@@ -3155,20 +3193,20 @@ com defaults Mondelez:
       \texttt{gerar\_proposicoes}(\Sigma, \Theta)
     \end{cases}
   \]
-  Tools que n\~ao recebem $\Theta$ (sellout, sellin, doi, resumo)
-  usam apenas agrega\c{c}\~ao; limiares de severidade/filtro s\~ao
-  aplicados nas fases Sinais e Optimus.
+  Tools de snapshot (\texttt{analisar\_sellout}/\texttt{sellin}/
+  \texttt{doi}) recebem $\Theta$ e filtram pela janela recente $w$
+  quando h\'a coluna \texttt{Date} (anti-polui\c{c}\~ao hist\'orica).
+  \texttt{resumir\_por\_categoria} permanece em agrega\c{c}\~ao plena.
+  Limiares de severidade/filtro adicionais s\~ao aplicados nas fases
+  Sinais e Optimus.
 \end{definicao}
 
 \begin{observacao}
-  O campo $\Theta.\texttt{janela\_recente\_dias}$ ($w$) existe em
-  \texttt{config.DomainThresholds} e no \texttt{.env}, mas
-  \texttt{Nexus.\_fase\_dominion\_mondelez} \textbf{n\~ao} passa
-  \texttt{janela\_recente\_dias=} \`as tools: elas usam o default
-  do par\^ametro Python ($w=30$). Propagar $w$ a partir de $\Theta$
-  est\'a nos \textbf{pr\'oximos passos}. Os demais campos de $\Theta$
-  (limiares, \texttt{forward\_marker}, meses persistentes) s\~ao
-  consumidos via o objeto \texttt{thresholds}.
+  O campo $\Theta.\texttt{janela\_recente\_dias}$ ($w$) \'e propagado
+  por \texttt{Nexus.\_fase\_dominion\_mondelez} via
+  \texttt{thresholds=} para sellout/sellin/doi/tend\^encia/forward/
+  desvio persistente. Sem coluna \texttt{Date}, o filtro de janela
+  \'e no-op (compatibilidade com fixtures sem eixo temporal).
 \end{observacao}
 
 
@@ -3706,7 +3744,6 @@ Para n\~ao modelar o n\~ao-implementado ou o opcional neste walkthrough
     \texttt{priorizar\_skus}, \texttt{ajustar\_cobertura},
     \texttt{proteger\_promocao}, \texttt{gerenciar\_falta\_excesso})
   \item Bridge / execu\c{c}\~ao autom\'atica ERP/WMS
-  \item Propaga\c{c}\~ao de $w=\texttt{janela\_recente\_dias}$ via Nexus
 \end{itemize}
 O mapeamento h\'ibrido N\'ivel 1 (determin\'istico + LLM residual)
 \textbf{est\'a} implementado (Cap\'itulo 3); neste exemplo o fixture
@@ -4098,8 +4135,6 @@ n\~ao entram como invariantes deste documento:
     (ADR-0021); N\'ivel 1 h\'ibrido j\'a implementado.
   \item DataShield N\'ivel 3: diagn\'ostico de incompatibilidade.
   \item UI Streamlit dedicada (\texttt{HITLStreamlit} / app).
-  \item Propagar $\Theta.\texttt{janela\_recente\_dias}$ do Nexus
-    para \texttt{analisar\_tendencia}/\texttt{analisar\_forward}.
   \item Tornar $\tau_I$ (hoje $10\,000$ hardcoded) configur\'avel.
   \item Geradores Optimus para os 6 tipos whitelisted sem regra.
   \item An\'alise de invent\'ario (colunas j\'a no schema can\^onico).
@@ -4161,7 +4196,7 @@ HITL da fila (ainda nos pr\'oximos passos).
   \texttt{ajustar\_plano\_sellin} & $\abs{\Delta^{\text{SI}}} \geq \tau_d$ & $u(s)$ \\
   \texttt{rebalancear\_estoque\_doi} & $\abs{g} \geq \gamma_m$ e tend $\neq$ melhorando & $u(s)$ \\
   \texttt{questionar\_premissa\_plano} & forward diverge $> \tau_f$ & $u(s)$ \\
-  \texttt{capturar\_oportunidade} & SO $\uparrow$ + DOI baixo + plano sub & $u(s)$ \\
+  \texttt{capturar\_oportunidade} & SO $\uparrow$ + DOI saudavel + plano sub & $u(s)$ \\
   \texttt{investigar\_desvio\_persistente} & $n^{\text{pers}} \geq n_p$ meses & $u(s)$ \\
   \texttt{ajustar\_demanda} & $\abs{\Delta^{\text{dem}}} \geq \tau_d$ (legado) & $u(s)$ \\
   \texttt{ajustar\_custo} & $\abs{\Delta^{\text{custo}}} \geq \tau_d$ (legado) & $u(s)$ \\

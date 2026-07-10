@@ -245,10 +245,77 @@ class TestAnalisarForward:
         mapa = _mapa_identidade(df)
         resultado = analisar_forward(df, mapa)
         resumo = resultado["resumo"]
-        total = (resumo["rupturas_projetadas"]
-                 + resumo["overstocks_projetados"]
-                 + resumo["gaps_plano"])
+        total = (
+            resumo["rupturas_projetadas"]
+            + resumo["overstocks_projetados"]
+            + resumo["gaps_plano"]
+            + resumo.get("oportunidades", 0)
+        )
         assert total == resumo["total_alertas"]
+
+    def test_doi_baixo_nunca_oportunidade(self) -> None:
+        """
+        Fronteira generica: DOI < tau_ruptura + SO acima -> ruptura,
+        mesmo com plano subdimensionado (nao oportunidade).
+        """
+        df = _carregar_fixture()
+        mapa = _mapa_identidade(df)
+        resultado = analisar_forward(df, mapa, janela_recente_dias=30)
+        bel = [a for a in resultado["alertas_forward"] if a["sku"] == "BEL-TEST-75G"]
+        assert len(bel) == 1
+        assert bel[0]["risco_projetado"] == RISCO_RUPTURA
+        assert bel[0]["doi_atual"] < 15.0
+        assert "nr_impacto" in bel[0]
+        assert bel[0]["nr_impacto"] > 0
+
+    def test_oportunidade_exige_doi_saudavel(self) -> None:
+        """
+        Oportunidade so quando DOI na faixa [tau_r, tau_o], SO acima
+        e plano forward subdimensionado -- regra sem SKU hardcoded.
+        """
+        rows = []
+        # Janela recente: DOI saudavel (20d), SO acima do plano
+        for i, day in enumerate(range(1, 31)):
+            rows.append({
+                "Date": f"2026-05-{day:02d}",
+                "SKU_Code": "OPP-TEST-01",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Biscuits",
+                "Brand": "OppBrand",
+                "SellOut_Plan_Ton": 10.0,
+                "SellOut_Actual_Ton": 15.0,
+                "SellIn_Plan_Ton": 10.0,
+                "SellIn_Actual_Ton": 12.0,
+                "DOI_Plan_Days": 30.0,
+                "DOI_Actual_Days": 20.0,
+                "SellOut_Actual_NR_USD": 1000.0,
+            })
+        # Forward: plano SO curto vs ritmo recente
+        for day in range(1, 15):
+            rows.append({
+                "Date": f"2026-06-{day:02d}",
+                "SKU_Code": "OPP-TEST-01",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Biscuits",
+                "Brand": "OppBrand",
+                "SellOut_Plan_Ton": 5.0,
+                "SellOut_Actual_Ton": float("nan"),
+                "SellIn_Plan_Ton": 5.0,
+                "SellIn_Actual_Ton": float("nan"),
+                "DOI_Plan_Days": 30.0,
+                "DOI_Actual_Days": float("nan"),
+                "SellOut_Actual_NR_USD": float("nan"),
+            })
+        df = pd.DataFrame(rows)
+        mapa = _mapa_identidade(df)
+        resultado = analisar_forward(
+            df, mapa, janela_recente_dias=30, data_corte="2026-05-30"
+        )
+        opp = [a for a in resultado["alertas_forward"] if a["sku"] == "OPP-TEST-01"]
+        assert len(opp) == 1
+        assert opp[0]["risco_projetado"] == RISCO_OPORTUNIDADE
 
     def test_data_corte_explicita(self) -> None:
         df = _carregar_fixture()

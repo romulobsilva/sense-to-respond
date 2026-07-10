@@ -195,16 +195,28 @@ Configuraveis por cliente/setor. Defaults calibrados para Mondelez FMCG.
 | `LIMIAR_PREMISSA_FURADA_PCT` | `15.0` | Divergencia% forward para alerta |
 | `LIMIAR_ACELERACAO_PCT` | `5.0` | Variacao pp entre semanas para ritmo |
 | `LIMIAR_DESVIO_PERSISTENTE_MESES` | `3` | Meses minimos para desvio persistente |
-| `JANELA_RECENTE_DIAS` | `30` | Tamanho da janela temporal recente |
+| `JANELA_RECENTE_DIAS` | `30` | Janela: snapshot SO/SI/DOI + tendencia/forward |
 | `FORWARD_MARKER` | `nan` | Marcador de dados forward: `nan`, `zero` |
+| `PESO_QUESTIONAR_PREMISSA` | `1.5` | Peso de ordenacao (fila+Optimus); nao altera R$ |
+| `PESO_CAPTURAR_OPORTUNIDADE` | `1.4` | Peso de ordenacao oportunidade forward |
+| `PESO_INVESTIGAR_DESVIO_PERSISTENTE` | `1.1` | Peso de ordenacao desvio persistente |
 | `SCHEMA_PATH` | - | Caminho para JSON de schema alternativo |
+
+**Priorizacao (Optimus + fila Nexus, mesmo score):**
+`I_prio = impacto_financeiro * peso_tipo`. Defaults acima via
+`DomainThresholds`. Impacto financeiro bruto inalterado; peso so na
+ordenacao. Demais tipos usam peso 1.0.
+
+**Fronteira forward:** DOI < `DOI_RUPTURA_DIAS` + SO acima = ruptura
+(nunca oportunidade). Oportunidade exige DOI em
+`[DOI_RUPTURA, DOI_OVERSTOCK]`.
 
 ### 7.3 Portabilidade multi-dominio (ADR-0024)
 
 O pipeline e **parametrico nos dados mas rigido no dominio** por default.
 Para novo cliente/setor, ajustar:
 
-1. `DomainThresholds` via `.env` (thresholds de DOI, desvio, janela temporal).
+1. `DomainThresholds` via `.env` (thresholds de DOI, desvio, janela, pesos).
 2. Schema canonico via `SCHEMA_PATH` (JSON com colunas esperadas).
 3. `FORWARD_MARKER` se dados forward usam zero ao inves de NaN.
 

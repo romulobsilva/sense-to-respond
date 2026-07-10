@@ -818,6 +818,19 @@ FORWARD_MARKER=zero detecta zeros como forward
 Dados actuais nao sao classificados como forward
 ```
 
+### 13c.3b Fronteira oportunidade vs ruptura + priorizacao
+
+```text
+DOI < DOI_RUPTURA + SO acima do plano -> ruptura (nunca oportunidade)
+DOI saudavel [RUPTURA, OVERSTOCK] + SO acima + plano curto -> oportunidade
+Peso questionar_premissa_plano sobe na fila vs snapshot com mesmo NR
+impacto_financeiro bruto == impacto_calculado (peso so no sort)
+Snapshot SO/SI/DOI com janela recente exclui series antigas
+Alertas forward carregam nr_impacto do periodo recente
+Fila Nexus ordena com o mesmo I_prio do Optimus (nao so R$ bruto)
+PESO_* via DomainThresholds/.env altera a ordem sem mudar R$
+```
+
 ### 13c.4 Schema configuravel
 
 ```text

@@ -25,6 +25,7 @@ from optimus import (
     gerar_proposicoes,
     LIMIAR_DESVIO_PCT,
     LIMIAR_DOI_GAP_DIAS,
+    _impacto_priorizado,
 )
 from state_types import TIPOS_DECISAO_MVP, Sinal
 
@@ -403,3 +404,100 @@ class TestOptimusMisto:
         feedback = ["Problema Y"]
         props = gerar_proposicoes(sinais, feedback_critic=feedback)
         assert "retry critic" in props[0].descricao
+
+
+class TestOptimusPesoPrioridade:
+    """Peso generico por tipo: forward sobe na fila sem alterar impacto bruto."""
+
+    def test_forward_acima_de_snapshot_mesmo_nr(self) -> None:
+        """
+        Com mesmo nr_impacto, questionar_premissa_plano ranqueia acima
+        de ajustar_plano_sellout (peso 1.5 vs 1.0).
+        """
+        so = Sinal(
+            sinal_id="SIG-SO-1",
+            tipo="desvio_sellout",
+            sku="SKU-A",
+            canal="MT",
+            metrica="sellout",
+            valor=100.0,
+            referencia=80.0,
+            desvio_pct=25.0,
+            severidade="alta",
+            nr_impacto=1000.0,
+        )
+        fwd = Sinal(
+            sinal_id="SIG-FWD-1",
+            tipo="premissa_forward_furada",
+            sku="SKU-B",
+            canal="MT",
+            metrica="forward_divergencia",
+            valor=8.0,
+            referencia=30.0,
+            desvio_pct=-40.0,
+            severidade="alta",
+            risco_forward="ruptura",
+            nr_impacto=1000.0,
+        )
+        props = gerar_proposicoes([so, fwd])
+        assert len(props) == 2
+        assert props[0].tipo == "questionar_premissa_plano"
+        assert props[1].tipo == "ajustar_plano_sellout"
+        assert props[0].impacto_financeiro == props[1].impacto_financeiro
+        assert _impacto_priorizado(props[0].impacto_financeiro, props[0].tipo) > (
+            _impacto_priorizado(props[1].impacto_financeiro, props[1].tipo)
+        )
+
+    def test_impacto_bruto_inalterado_pelo_peso(self) -> None:
+        fwd = Sinal(
+            sinal_id="SIG-FWD-2",
+            tipo="forward_oportunidade",
+            sku="SKU-C",
+            canal="MT",
+            metrica="forward_divergencia",
+            valor=20.0,
+            referencia=30.0,
+            desvio_pct=12.0,
+            severidade="media",
+            risco_forward="oportunidade",
+            nr_impacto=500.0,
+        )
+        props = gerar_proposicoes([fwd])
+        assert len(props) == 1
+        assert props[0].impacto_financeiro == 500.0
+        assert props[0].impacto_calculado == 500.0
+        assert props[0].tipo == "capturar_oportunidade"
+
+    def test_peso_via_thresholds_configuravel(self) -> None:
+        """Alterar peso no DomainThresholds muda a ordem do Optimus."""
+        from config import DomainThresholds
+
+        so = Sinal(
+            sinal_id="SIG-SO-2",
+            tipo="desvio_sellout",
+            sku="SKU-A",
+            canal="MT",
+            metrica="sellout",
+            valor=100.0,
+            referencia=80.0,
+            desvio_pct=25.0,
+            severidade="alta",
+            nr_impacto=1000.0,
+        )
+        fwd = Sinal(
+            sinal_id="SIG-FWD-3",
+            tipo="premissa_forward_furada",
+            sku="SKU-B",
+            canal="MT",
+            metrica="forward_divergencia",
+            valor=8.0,
+            referencia=30.0,
+            desvio_pct=-40.0,
+            severidade="alta",
+            risco_forward="ruptura",
+            nr_impacto=1000.0,
+        )
+        th_neutro = DomainThresholds(peso_questionar_premissa_plano=1.0)
+        props = gerar_proposicoes([so, fwd], thresholds=th_neutro)
+        assert props[0].tipo == "ajustar_plano_sellout"
+        assert props[1].tipo == "questionar_premissa_plano"

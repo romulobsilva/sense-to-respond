@@ -4,9 +4,13 @@ Guardrails de entrada e saida do Nexus (MVP).
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
+from optimus import _impacto_priorizado
 from state_types import ItemFilaNexus, Proposicao, serializar_proposicoes_para_llm
+
+if TYPE_CHECKING:
+    from config import DomainThresholds
 
 DISCLAIMER_OBRIGATORIO = (
     "AVISO: Proposicoes geradas por IA com base em analises deterministicas. "
@@ -88,14 +92,21 @@ def montar_fila_com_flags(
     confianca_critic: Optional[float],
     limiar_confianca: float,
     validacao_ok: bool,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> List[ItemFilaNexus]:
     """
     Monta fila Nexus com flag de revisao obrigatoria quando necessario.
+
+    Ordenacao usa o mesmo score ponderado do Optimus
+    (``impacto_financeiro * peso_tipo``), sem alterar o R$ exibido.
     """
     fila: List[ItemFilaNexus] = []
     ordenadas = sorted(
         proposicoes,
-        key=lambda p: (-p.impacto_financeiro, p.urgencia_horas),
+        key=lambda p: (
+            -_impacto_priorizado(p.impacto_financeiro, p.tipo, thresholds),
+            p.urgencia_horas,
+        ),
     )
     for idx, prop in enumerate(ordenadas, start=1):
         motivos: List[str] = []

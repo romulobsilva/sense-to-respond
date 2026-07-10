@@ -250,6 +250,9 @@ def _agg_plan_actual(
 def analisar_sellout(
     df: pd.DataFrame,
     mapa: Dict[str, str],
+    janela_recente_dias: Optional[int] = None,
+    data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Analise de sell-out agregada por SKU x Pais x Canal (Nivel 1).
@@ -259,21 +262,32 @@ def analisar_sellout(
       - Gap absoluto e % por SKU/pais/canal (acumulado do periodo)
       - Impacto = abs(desvio_pct/100) * NR actual (deterministico)
 
+    Quando ``janela_recente_dias`` ou ``thresholds.janela_recente_dias``
+    esta definido e ha coluna Date, agrega apenas a janela recente
+    (evita poluicao por series historicas).
+
     Args:
         df: DataFrame com dados (pode ser canonico ou original).
         mapa: dicionario {col_original: col_canonica}.
+        janela_recente_dias: opcional; se None usa thresholds ou sem filtro.
+        data_corte: data de corte ISO opcional.
+        thresholds: DomainThresholds (ADR-0024).
 
     Returns:
         Dict com "desvios" (lista agregada por SKU/Pais/Canal) e "resumo".
     """
-    col_plan_ton = _col(df, mapa, "SellOut_Plan_Ton")
-    col_actual_ton = _col(df, mapa, "SellOut_Actual_Ton")
+    df_janela = _aplicar_janela_recente(
+        df, mapa, janela_recente_dias, data_corte, thresholds
+    )
+
+    col_plan_ton = _col(df_janela, mapa, "SellOut_Plan_Ton")
+    col_actual_ton = _col(df_janela, mapa, "SellOut_Actual_Ton")
 
     if col_plan_ton is None or col_actual_ton is None:
         return {"desvios": [], "resumo": {"erro": "colunas sellout ausentes"}}
 
     grouped = _agg_plan_actual(
-        df, mapa,
+        df_janela, mapa,
         "SellOut_Plan_Ton", "SellOut_Actual_Ton", "SellOut_Actual_NR_USD",
         DIMS_NIVEL_1,
     )
@@ -281,7 +295,7 @@ def analisar_sellout(
     if grouped.empty:
         return {"desvios": [], "resumo": {"total_registros": 0}}
 
-    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    dim_cols = _resolver_dims(df_janela, mapa, DIMS_NIVEL_1)
     dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
 
     desvios: List[Dict[str, Any]] = []
@@ -341,6 +355,9 @@ def analisar_sellout(
 def analisar_sellin(
     df: pd.DataFrame,
     mapa: Dict[str, str],
+    janela_recente_dias: Optional[int] = None,
+    data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Analise de sell-in agregada por SKU x Pais x Canal (Nivel 1).
@@ -350,21 +367,30 @@ def analisar_sellin(
       - SI > SO sem aumento de DOI planejado -> trade overstock
       - SI puxado para frente (pipeline fill) ou atrasado
 
+    Quando janela recente esta definida, agrega apenas o periodo vivo.
+
     Args:
         df: DataFrame com dados.
         mapa: dicionario {col_original: col_canonica}.
+        janela_recente_dias: opcional; se None usa thresholds ou sem filtro.
+        data_corte: data de corte ISO opcional.
+        thresholds: DomainThresholds (ADR-0024).
 
     Returns:
         Dict com "desvios" (lista agregada por SKU/Pais/Canal) e "resumo".
     """
-    col_plan_ton = _col(df, mapa, "SellIn_Plan_Ton")
-    col_actual_ton = _col(df, mapa, "SellIn_Actual_Ton")
+    df_janela = _aplicar_janela_recente(
+        df, mapa, janela_recente_dias, data_corte, thresholds
+    )
+
+    col_plan_ton = _col(df_janela, mapa, "SellIn_Plan_Ton")
+    col_actual_ton = _col(df_janela, mapa, "SellIn_Actual_Ton")
 
     if col_plan_ton is None or col_actual_ton is None:
         return {"desvios": [], "resumo": {"erro": "colunas sellin ausentes"}}
 
     grouped = _agg_plan_actual(
-        df, mapa,
+        df_janela, mapa,
         "SellIn_Plan_Ton", "SellIn_Actual_Ton", "SellIn_Actual_NR_USD",
         DIMS_NIVEL_1,
     )
@@ -372,7 +398,7 @@ def analisar_sellin(
     if grouped.empty:
         return {"desvios": [], "resumo": {"total_registros": 0}}
 
-    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    dim_cols = _resolver_dims(df_janela, mapa, DIMS_NIVEL_1)
     dim_map = dict(zip(dim_cols, DIMS_NIVEL_1))
 
     desvios: List[Dict[str, Any]] = []
@@ -431,6 +457,9 @@ def analisar_sellin(
 def analisar_doi(
     df: pd.DataFrame,
     mapa: Dict[str, str],
+    janela_recente_dias: Optional[int] = None,
+    data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
 ) -> Dict[str, Any]:
     """
     Analise de DOI agregada por SKU x Pais x Canal (Nivel 1).
@@ -442,22 +471,31 @@ def analisar_doi(
       - Actual DOI vs target por Country/Channel/Brand
       - gap_dias = DOI_Actual_media - DOI_Plan_media
 
+    Quando janela recente esta definida, agrega apenas o periodo vivo.
+
     Args:
         df: DataFrame com dados.
         mapa: dicionario {col_original: col_canonica}.
+        janela_recente_dias: opcional; se None usa thresholds ou sem filtro.
+        data_corte: data de corte ISO opcional.
+        thresholds: DomainThresholds (ADR-0024).
 
     Returns:
         Dict com "desvios" (lista agregada por SKU/Pais/Canal) e "resumo".
     """
-    col_plan = _col(df, mapa, "DOI_Plan_Days")
-    col_actual = _col(df, mapa, "DOI_Actual_Days")
+    df_janela = _aplicar_janela_recente(
+        df, mapa, janela_recente_dias, data_corte, thresholds
+    )
+
+    col_plan = _col(df_janela, mapa, "DOI_Plan_Days")
+    col_actual = _col(df_janela, mapa, "DOI_Actual_Days")
 
     if col_plan is None or col_actual is None:
         return {"desvios": [], "resumo": {"erro": "colunas DOI ausentes"}}
 
-    col_so_actual_nr = _col(df, mapa, "SellOut_Actual_NR_USD")
+    col_so_actual_nr = _col(df_janela, mapa, "SellOut_Actual_NR_USD")
 
-    dim_cols = _resolver_dims(df, mapa, DIMS_NIVEL_1)
+    dim_cols = _resolver_dims(df_janela, mapa, DIMS_NIVEL_1)
     if not dim_cols:
         return {"desvios": [], "resumo": {"erro": "dimensoes ausentes"}}
 
@@ -465,7 +503,7 @@ def analisar_doi(
     if col_so_actual_nr is not None:
         cols_needed.append(col_so_actual_nr)
 
-    work = df[cols_needed].copy()
+    work = df_janela[cols_needed].copy()
     work = work.dropna(subset=[col_plan, col_actual])
     if work.empty:
         return {"desvios": [], "resumo": {"total_registros": 0}}
@@ -692,6 +730,68 @@ def _is_actual_mask(
 ) -> pd.Series:
     """Inverso de _is_forward_mask: linhas com dados realizados."""
     return ~_is_forward_mask(series, forward_marker)
+
+
+def _aplicar_janela_recente(
+    df: pd.DataFrame,
+    mapa: Dict[str, str],
+    janela_recente_dias: Optional[int] = None,
+    data_corte: Optional[str] = None,
+    thresholds: Optional["DomainThresholds"] = None,
+) -> pd.DataFrame:
+    """
+    Filtra linhas realizadas na janela recente (anti-poluicao historica).
+
+    Regra generica (sem ScenarioTag / SKU):
+      - Se nao ha coluna Date: retorna df inalterado.
+      - Se janela_recente_dias e None e thresholds e None: sem filtro
+        (compatibilidade com callers legados).
+      - Caso contrario: mantem apenas linhas com actual nao-forward
+        em (corte - janela, corte].
+
+    Assim series antigas (ex.: campanhas encerradas) nao dominam o
+    snapshot de SO/SI/DOI quando o dataset e atualizado.
+    """
+    _janela = janela_recente_dias
+    if _janela is None and thresholds is not None:
+        _janela = int(thresholds.janela_recente_dias)
+    if _janela is None:
+        return df
+
+    col_date = _col(df, mapa, "Date")
+    if col_date is None:
+        return df
+
+    col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
+    _fwd_marker = "nan"
+    if thresholds is not None:
+        _fwd_marker = thresholds.forward_marker
+
+    work = df.copy()
+    work[col_date] = pd.to_datetime(work[col_date], errors="coerce")
+    work = work.dropna(subset=[col_date])
+    if work.empty:
+        return work
+
+    if col_so_actual is not None:
+        corte = _data_corte_efetiva(
+            work, col_date, col_so_actual, data_corte, _fwd_marker
+        )
+        mask_real = _is_actual_mask(work[col_so_actual], _fwd_marker)
+    else:
+        if data_corte is not None:
+            corte = pd.Timestamp(data_corte)
+        else:
+            corte = pd.Timestamp(work[col_date].max())
+        mask_real = pd.Series(True, index=work.index)
+
+    inicio = corte - pd.Timedelta(days=int(_janela))
+    filtrado = work[
+        mask_real
+        & (work[col_date] > inicio)
+        & (work[col_date] <= corte)
+    ]
+    return filtrado
 
 
 def _data_corte_efetiva(
@@ -989,9 +1089,13 @@ def analisar_forward(
     Returns:
         Dict com "alertas_forward" (lista por SKU/Pais/Canal) e "resumo".
     """
+    if thresholds is not None and janela_recente_dias == 30:
+        janela_recente_dias = int(thresholds.janela_recente_dias)
+
     col_date = _col(df, mapa, "Date")
     col_so_actual = _col(df, mapa, "SellOut_Actual_Ton")
     col_so_plan = _col(df, mapa, "SellOut_Plan_Ton")
+    col_so_nr = _col(df, mapa, "SellOut_Actual_NR_USD")
     col_si_plan = _col(df, mapa, "SellIn_Plan_Ton")
     col_si_actual = _col(df, mapa, "SellIn_Actual_Ton")
     col_doi_actual = _col(df, mapa, "DOI_Actual_Days")
@@ -1042,6 +1146,8 @@ def analisar_forward(
         agg_real[col_so_plan] = "sum"
     if col_so_actual is not None and col_so_actual in realizados.columns:
         agg_real[col_so_actual] = "sum"
+    if col_so_nr is not None and col_so_nr in realizados.columns:
+        agg_real[col_so_nr] = "sum"
     if col_si_plan is not None and col_si_plan in realizados.columns:
         agg_real[col_si_plan] = "sum"
     if col_si_actual is not None and col_si_actual in realizados.columns:
@@ -1136,12 +1242,14 @@ def analisar_forward(
         risco = ""
         so_acima_plano = so_tendencia_pct > _limiar_desvio
         plano_subdimensionado = divergencia_forward_pct < -_limiar_furada
+        # Fronteira generica: DOI abaixo de ruptura nunca e oportunidade.
+        # Oportunidade exige DOI na faixa saudavel [tau_r, tau_o].
+        doi_saudavel = doi_atual >= _doi_rupt and doi_atual <= _doi_over
 
         if doi_atual > 0 and doi_atual < _doi_rupt and so_acima_plano:
-            if plano_subdimensionado:
-                risco = RISCO_OPORTUNIDADE
-            else:
-                risco = RISCO_RUPTURA
+            risco = RISCO_RUPTURA
+        elif doi_saudavel and so_acima_plano and plano_subdimensionado:
+            risco = RISCO_OPORTUNIDADE
         elif doi_atual > _doi_over:
             risco = RISCO_OVERSTOCK
         if not premissa_coerente and not risco:
@@ -1149,6 +1257,12 @@ def analisar_forward(
 
         if not risco and premissa_coerente:
             continue
+
+        # Impacto NR do periodo recente (mesmo criterio do snapshot SO)
+        nr_recente = 0.0
+        if col_so_nr is not None and col_so_nr in row_real.index:
+            nr_recente = float(row_real.get(col_so_nr, 0) or 0)
+        nr_impacto_fwd = round((abs(so_tendencia_pct) / 100.0) * nr_recente, 2)
 
         alerta: Dict[str, Any] = {
             "so_tendencia_recente_pct": so_tendencia_pct,
@@ -1160,6 +1274,7 @@ def analisar_forward(
             "doi_plan_forward": round(doi_plan_fwd, 1),
             "si_plan_forward_ton": round(si_plan_fwd, 2),
             "si_actual_recente_ton": round(si_actual_recente, 2),
+            "nr_impacto": nr_impacto_fwd,
             "risco_projetado": risco,
         }
         for col_df, col_canon in dim_map.items():

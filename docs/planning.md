@@ -332,6 +332,17 @@ Nota: a Fase 1.5b ja implementa as analises basicas (sellout, sellin, DOI simple
 A Fase 1.6 adiciona analises **temporais, comparativas e de tendencia** que nao
 existem na 1.5b.
 
+### 1.6.0 Priorizacao e fronteira forward (anti-overfit)
+- [x] Fronteira generica: DOI < tau_ruptura + SO acima -> ruptura (nunca oportunidade)
+- [x] Oportunidade so com DOI saudavel [tau_r, tau_o] + plano subdimensionado
+- [x] Peso de prioridade por tipo (forward 1.5/1.4) sem alterar impacto bruto
+- [x] Snapshot SO/SI/DOI filtrado por janela recente (anti-historico)
+- [x] Propagar `thresholds` / janela do Nexus para sellout/sellin/doi
+- [x] NR nos alertas forward para ranqueamento justo vs snapshot
+- [x] Fila Nexus usa o mesmo score ponderado do Optimus
+- [x] Pesos de prioridade em `DomainThresholds` / `.env`
+- [x] Testes sinteticos (sem SKU/ScenarioTag hardcoded no codigo de producao)
+
 ### 1.6.1 Analises temporais e comparativas
 Em `tools_parametrizadas.py` (mesmo arquivo da 1.5b):
 - [ ] `analisar_tendencia(df, mapa, janela=4) -> dict` -- tendencia por SKU nas ultimas N semanas

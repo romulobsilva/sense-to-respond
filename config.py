@@ -2,19 +2,26 @@
 Carrega configuracao a partir de variaveis de ambiente (.env).
 
 Inclui DomainThresholds (ADR-0024) para portabilidade multi-dominio:
-thresholds de DOI, desvio, janela temporal e marcador forward sao
-configuraveis por cliente via .env, com defaults Mondelez.
+thresholds de DOI, desvio, janela temporal, marcador forward e pesos
+de priorizacao sao configuraveis por cliente via .env, com defaults
+Mondelez.
 """
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 from dotenv import load_dotenv
 
 
 HITL_MODES_VALIDOS = frozenset({"terminal", "auto", "arquivo", "streamlit"})
 FORWARD_MARKERS_VALIDOS = frozenset({"nan", "zero"})
+
+# Defaults de peso de ordenacao (heuristica; so afetam sort, nao R$ bruto)
+PESO_QUESTIONAR_PREMISSA_DEFAULT = 1.5
+PESO_CAPTURAR_OPORTUNIDADE_DEFAULT = 1.4
+PESO_INVESTIGAR_DESVIO_PERSISTENTE_DEFAULT = 1.1
+PESO_TIPO_DEFAULT = 1.0
 
 
 @dataclass(frozen=True)
@@ -37,6 +44,24 @@ class DomainThresholds:
     limiar_desvio_persistente_meses: int = 3
     janela_recente_dias: int = 30
     forward_marker: str = "nan"
+    peso_questionar_premissa_plano: float = PESO_QUESTIONAR_PREMISSA_DEFAULT
+    peso_capturar_oportunidade: float = PESO_CAPTURAR_OPORTUNIDADE_DEFAULT
+    peso_investigar_desvio_persistente: float = (
+        PESO_INVESTIGAR_DESVIO_PERSISTENTE_DEFAULT
+    )
+
+    def peso_tipo(self, tipo: str) -> float:
+        """
+        Multiplicador de prioridade por tipo de proposicao.
+
+        Tipos sem peso explicito usam 1.0. Nao altera impacto financeiro.
+        """
+        mapa: Dict[str, float] = {
+            "questionar_premissa_plano": self.peso_questionar_premissa_plano,
+            "capturar_oportunidade": self.peso_capturar_oportunidade,
+            "investigar_desvio_persistente": self.peso_investigar_desvio_persistente,
+        }
+        return float(mapa.get(tipo, PESO_TIPO_DEFAULT))
 
 
 @dataclass(frozen=True)
@@ -80,6 +105,26 @@ def _load_thresholds() -> DomainThresholds:
             f"Validos: {', '.join(sorted(FORWARD_MARKERS_VALIDOS))}"
         )
 
+    peso_q = _read_float(
+        "PESO_QUESTIONAR_PREMISSA",
+        str(PESO_QUESTIONAR_PREMISSA_DEFAULT),
+    )
+    peso_o = _read_float(
+        "PESO_CAPTURAR_OPORTUNIDADE",
+        str(PESO_CAPTURAR_OPORTUNIDADE_DEFAULT),
+    )
+    peso_p = _read_float(
+        "PESO_INVESTIGAR_DESVIO_PERSISTENTE",
+        str(PESO_INVESTIGAR_DESVIO_PERSISTENTE_DEFAULT),
+    )
+    for nome, valor in (
+        ("PESO_QUESTIONAR_PREMISSA", peso_q),
+        ("PESO_CAPTURAR_OPORTUNIDADE", peso_o),
+        ("PESO_INVESTIGAR_DESVIO_PERSISTENTE", peso_p),
+    ):
+        if valor <= 0.0:
+            raise ValueError(f"{nome} deve ser > 0 (recebido: {valor}).")
+
     return DomainThresholds(
         doi_ruptura_dias=_read_float("DOI_RUPTURA_DIAS", "15.0"),
         doi_overstock_dias=_read_float("DOI_OVERSTOCK_DIAS", "40.0"),
@@ -93,6 +138,9 @@ def _load_thresholds() -> DomainThresholds:
         limiar_desvio_persistente_meses=_read_int("LIMIAR_DESVIO_PERSISTENTE_MESES", "3"),
         janela_recente_dias=_read_int("JANELA_RECENTE_DIAS", "30"),
         forward_marker=forward_marker,
+        peso_questionar_premissa_plano=peso_q,
+        peso_capturar_oportunidade=peso_o,
+        peso_investigar_desvio_persistente=peso_p,
     )
 
 
