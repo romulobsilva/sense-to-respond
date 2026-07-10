@@ -10,6 +10,7 @@ Tipos de sinal suportados:
   - tendencia_temporal: direcao DOI + SO recente vs anterior + ritmo variacao
   - premissa_forward_furada: plano futuro diverge da tendencia recente
   - forward_oportunidade: SO acima + DOI saudavel + plano subdimensionado
+    (ou dual_com_ruptura quando DOI critico + plano curto)
   - desvio_persistente: desvio no mesmo sinal por N meses consecutivos
 
 Severidade segue thresholds do S&OE Analyst Questions Script:

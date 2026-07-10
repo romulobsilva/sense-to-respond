@@ -345,6 +345,7 @@ Gerar explicacao clara para o usuario com base em resultados deterministicos e p
 pergunta original
 resultados deterministicos
 proposicoes Optimus
+resumo_executivo (top_doi / top_forward / top_oportunidades)
 validacao, se disponivel
 critica, se disponivel
 ```
@@ -356,13 +357,18 @@ critica, se disponivel
 Texto em portugues, objetivo, com:
 
 ```text id="unw1tc"
-achados principais
+achados principais alinhados ao RESUMO EXECUTIVO
+polaridades ruptura vs overstock ja calculadas
+dual framing (ruptura + oportunidade) quando presente no contexto
 numeros ja calculados
 SKUs, canais e percentuais fornecidos no contexto
 limitacoes
 alertas de revisao
 proximos passos sugeridos para humano
 ```
+
+O LLM deve citar o ranking do resumo; nao reordenar por conta propria.
+DOI critico + plano curto = ruptura primaria e, se listado, oportunidade dual.
 
 ---
 

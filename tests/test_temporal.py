@@ -209,8 +209,12 @@ class TestAnalisarForward:
         resultado = analisar_forward(df, mapa, janela_recente_dias=30)
         bel = [a for a in resultado["alertas_forward"]
                if a["sku"] == "BEL-TEST-75G"]
-        assert len(bel) == 1
-        assert bel[0]["risco_projetado"] == RISCO_RUPTURA
+        bel_rup = [a for a in bel if a["risco_projetado"] == RISCO_RUPTURA]
+        assert len(bel_rup) == 1
+        # Dual framing: pode haver oportunidade adicional se plano curto
+        for a in bel:
+            if a["risco_projetado"] == RISCO_OPORTUNIDADE:
+                assert a.get("dual_com_ruptura") is True
 
     def test_halls_risco_overstock(self) -> None:
         """HAL-TEST-28G: DOI > 40 + SI alto -> overstock."""
@@ -253,20 +257,75 @@ class TestAnalisarForward:
         )
         assert total == resumo["total_alertas"]
 
-    def test_doi_baixo_nunca_oportunidade(self) -> None:
+    def test_doi_baixo_nunca_substitui_ruptura_por_oportunidade(self) -> None:
         """
-        Fronteira generica: DOI < tau_ruptura + SO acima -> ruptura,
-        mesmo com plano subdimensionado (nao oportunidade).
+        Fronteira: DOI < tau + SO acima -> ruptura primaria permanece.
+        Dual framing pode adicionar oportunidade se plano subdimensionado.
         """
         df = _carregar_fixture()
         mapa = _mapa_identidade(df)
         resultado = analisar_forward(df, mapa, janela_recente_dias=30)
         bel = [a for a in resultado["alertas_forward"] if a["sku"] == "BEL-TEST-75G"]
-        assert len(bel) == 1
-        assert bel[0]["risco_projetado"] == RISCO_RUPTURA
-        assert bel[0]["doi_atual"] < 15.0
-        assert "nr_impacto" in bel[0]
-        assert bel[0]["nr_impacto"] > 0
+        bel_rup = [a for a in bel if a["risco_projetado"] == RISCO_RUPTURA]
+        assert len(bel_rup) == 1
+        assert bel_rup[0]["doi_atual"] < 15.0
+        assert bel_rup[0].get("dual_com_ruptura") is False
+        bel_opp = [a for a in bel if a["risco_projetado"] == RISCO_OPORTUNIDADE]
+        for a in bel_opp:
+            assert a.get("dual_com_ruptura") is True
+            assert a.get("plano_subdimensionado") is True
+
+    def test_dual_framing_ruptura_e_oportunidade(self) -> None:
+        """
+        Ruptura + plano subdimensionado emite dois alertas (sem SKU hardcoded).
+        """
+        rows = []
+        for day in range(1, 31):
+            rows.append({
+                "Date": f"2026-05-{day:02d}",
+                "SKU_Code": "DUAL-TEST-01",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Biscuits",
+                "Brand": "DualBrand",
+                "SellOut_Plan_Ton": 10.0,
+                "SellOut_Actual_Ton": 18.0,
+                "SellIn_Plan_Ton": 10.0,
+                "SellIn_Actual_Ton": 12.0,
+                "DOI_Plan_Days": 30.0,
+                "DOI_Actual_Days": 8.0,
+                "SellOut_Actual_NR_USD": 2000.0,
+            })
+        for day in range(1, 15):
+            rows.append({
+                "Date": f"2026-06-{day:02d}",
+                "SKU_Code": "DUAL-TEST-01",
+                "Country": "Brazil",
+                "Channel": "Modern Trade",
+                "Category": "Biscuits",
+                "Brand": "DualBrand",
+                "SellOut_Plan_Ton": 8.0,
+                "SellOut_Actual_Ton": float("nan"),
+                "SellIn_Plan_Ton": 8.0,
+                "SellIn_Actual_Ton": float("nan"),
+                "DOI_Plan_Days": 28.0,
+                "DOI_Actual_Days": float("nan"),
+                "SellOut_Actual_NR_USD": float("nan"),
+            })
+        df = pd.DataFrame(rows)
+        mapa = {c: c for c in df.columns}
+        resultado = analisar_forward(
+            df, mapa, janela_recente_dias=30, data_corte="2026-05-30"
+        )
+        alertas = [
+            a for a in resultado["alertas_forward"]
+            if a["sku"] == "DUAL-TEST-01"
+        ]
+        riscos = {a["risco_projetado"] for a in alertas}
+        assert RISCO_RUPTURA in riscos
+        assert RISCO_OPORTUNIDADE in riscos
+        opp = [a for a in alertas if a["risco_projetado"] == RISCO_OPORTUNIDADE]
+        assert opp[0]["dual_com_ruptura"] is True
 
     def test_oportunidade_exige_doi_saudavel(self) -> None:
         """
@@ -469,6 +528,40 @@ class TestProposicoesEnriquecidas:
         ]
         assert len(halls_doi) == 1
         assert "SEGURAR" in halls_doi[0].descricao
+
+    def test_doi_estavel_so_proximo_suprimido(self) -> None:
+        """Overstock com tendencia estavel e SO perto do plano nao rebalanceia."""
+        sinais = [
+            Sinal(
+                sinal_id="SIG-DOI-1",
+                tipo="doi_fora_politica",
+                sku="SKU-STABLE",
+                canal="MT",
+                metrica="doi",
+                valor=47.0,
+                referencia=25.0,
+                desvio_pct=88.0,
+                severidade="alta",
+                pais="BR",
+                nr_impacto=5000.0,
+            ),
+            Sinal(
+                sinal_id="SIG-TEND-1",
+                tipo="tendencia_temporal",
+                sku="SKU-STABLE",
+                canal="MT",
+                metrica="tendencia_doi_so",
+                valor=47.0,
+                referencia=46.0,
+                desvio_pct=2.0,
+                severidade="baixa",
+                pais="BR",
+                tendencia="estavel",
+                so_ritmo="estavel",
+            ),
+        ]
+        props = gerar_proposicoes(sinais)
+        assert props == []
 
     def test_belvita_ruptura_forward(self) -> None:
         """Belvita: DOI baixo + SO subindo -> questionar premissa ruptura."""

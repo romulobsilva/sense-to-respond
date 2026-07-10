@@ -821,14 +821,30 @@ Dados actuais nao sao classificados como forward
 ### 13c.3b Fronteira oportunidade vs ruptura + priorizacao
 
 ```text
-DOI < DOI_RUPTURA + SO acima do plano -> ruptura (nunca oportunidade)
-DOI saudavel [RUPTURA, OVERSTOCK] + SO acima + plano curto -> oportunidade
+DOI < DOI_RUPTURA + SO acima do plano -> ruptura (risco primario)
+Ruptura + plano subdimensionado -> dual framing (ruptura E capturar_oportunidade)
+Oportunidade pura: DOI saudavel [RUPTURA, OVERSTOCK] + SO acima + plano curto
 Peso questionar_premissa_plano sobe na fila vs snapshot com mesmo NR
 impacto_financeiro bruto == impacto_calculado (peso so no sort)
 Snapshot SO/SI/DOI com janela recente exclui series antigas
 Alertas forward carregam nr_impacto do periodo recente
 Fila Nexus ordena com o mesmo I_prio do Optimus (nao so R$ bruto)
 PESO_* via DomainThresholds/.env altera a ordem sem mudar R$
+DOI overstock + tendencia estavel + |SO desvio| < limiar -> sem rebalancear
+```
+
+### 13c.3c Resumo executivo estratificado + filtro persistente
+
+```text
+TOP_N_DOI / TOP_N_FORWARD / TOP_N_OPORTUNIDADES (ou --top-doi/--top-forward/--top-opps)
+Blocos separados: top_doi, top_forward, top_oportunidades (sem ranking misturado)
+Dentro de DOI/forward: cota ruptura vs overstock (diversidade de polaridade)
+DOI com NR alto nao remove forward do quadro executivo
+Ordenacao por topico via I_prio; impacto_financeiro bruto inalterado
+--top-riscos legado aplica o mesmo N a DOI e FORWARD
+Persistente com |impacto|<100 e |desvio%|<5 nao gera proposicao
+state.resumo_executivo gravado na auditoria (inclui diversidade_*)
+Fixture temporal: Belvita em top_doi e/ou top_forward; dual framing testado
 ```
 
 ### 13c.4 Schema configuravel

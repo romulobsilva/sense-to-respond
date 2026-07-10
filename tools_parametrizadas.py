@@ -1270,12 +1270,14 @@ def analisar_forward(
             "so_diario_plan_fwd": round(so_diario_plan_fwd, 4),
             "divergencia_forward_pct": divergencia_forward_pct,
             "premissa_coerente": premissa_coerente,
+            "plano_subdimensionado": plano_subdimensionado,
             "doi_atual": round(doi_atual, 1),
             "doi_plan_forward": round(doi_plan_fwd, 1),
             "si_plan_forward_ton": round(si_plan_fwd, 2),
             "si_actual_recente_ton": round(si_actual_recente, 2),
             "nr_impacto": nr_impacto_fwd,
             "risco_projetado": risco,
+            "dual_com_ruptura": False,
         }
         for col_df, col_canon in dim_map.items():
             val = row_fwd.get(col_df)
@@ -1293,6 +1295,15 @@ def analisar_forward(
                 key = col_canon.lower()
             alerta[key] = str(val) if val is not None and not pd.isna(val) else ""
         alertas.append(alerta)
+
+        # Dual framing anti-overfit: ruptura primaria permanece; se o plano
+        # forward esta curto vs demanda, emite tambem oportunidade (subir SI).
+        # Nao substitui ruptura e nao usa SKU/ScenarioTag.
+        if risco == RISCO_RUPTURA and plano_subdimensionado:
+            alerta_opp = dict(alerta)
+            alerta_opp["risco_projetado"] = RISCO_OPORTUNIDADE
+            alerta_opp["dual_com_ruptura"] = True
+            alertas.append(alerta_opp)
 
     rupturas = sum(1 for a in alertas if a["risco_projetado"] == RISCO_RUPTURA)
     overstocks = sum(1 for a in alertas if a["risco_projetado"] == RISCO_OVERSTOCK)

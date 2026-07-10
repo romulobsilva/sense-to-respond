@@ -49,6 +49,11 @@ class DomainThresholds:
     peso_investigar_desvio_persistente: float = (
         PESO_INVESTIGAR_DESVIO_PERSISTENTE_DEFAULT
     )
+    top_n_doi: int = 5
+    top_n_forward: int = 5
+    top_n_oportunidades: int = 5
+    limiar_persistente_impacto: float = 100.0
+    limiar_persistente_desvio_pct: float = 5.0
 
     def peso_tipo(self, tipo: str) -> float:
         """
@@ -125,6 +130,33 @@ def _load_thresholds() -> DomainThresholds:
         if valor <= 0.0:
             raise ValueError(f"{nome} deve ser > 0 (recebido: {valor}).")
 
+    top_n_doi = _read_int("TOP_N_DOI", "5")
+    top_n_fwd = _read_int("TOP_N_FORWARD", "5")
+    top_n_o = _read_int("TOP_N_OPORTUNIDADES", "5")
+    # Legado: se so TOP_N_RISCOS estiver setado, replica para doi e forward
+    legado_raw = os.getenv("TOP_N_RISCOS", "").strip()
+    if legado_raw and not os.getenv("TOP_N_DOI", "").strip() and not os.getenv("TOP_N_FORWARD", "").strip():
+        top_n_doi = int(legado_raw)
+        top_n_fwd = int(legado_raw)
+    for nome, valor in (
+        ("TOP_N_DOI", top_n_doi),
+        ("TOP_N_FORWARD", top_n_fwd),
+        ("TOP_N_OPORTUNIDADES", top_n_o),
+    ):
+        if valor < 1:
+            raise ValueError(f"{nome} deve ser >= 1 (recebido: {valor}).")
+
+    lim_imp = _read_float("LIMIAR_PERSISTENTE_IMPACTO", "100.0")
+    lim_dev = _read_float("LIMIAR_PERSISTENTE_DESVIO_PCT", "5.0")
+    if lim_imp < 0.0:
+        raise ValueError(
+            f"LIMIAR_PERSISTENTE_IMPACTO deve ser >= 0 (recebido: {lim_imp})."
+        )
+    if lim_dev < 0.0:
+        raise ValueError(
+            f"LIMIAR_PERSISTENTE_DESVIO_PCT deve ser >= 0 (recebido: {lim_dev})."
+        )
+
     return DomainThresholds(
         doi_ruptura_dias=_read_float("DOI_RUPTURA_DIAS", "15.0"),
         doi_overstock_dias=_read_float("DOI_OVERSTOCK_DIAS", "40.0"),
@@ -141,6 +173,11 @@ def _load_thresholds() -> DomainThresholds:
         peso_questionar_premissa_plano=peso_q,
         peso_capturar_oportunidade=peso_o,
         peso_investigar_desvio_persistente=peso_p,
+        top_n_doi=top_n_doi,
+        top_n_forward=top_n_fwd,
+        top_n_oportunidades=top_n_o,
+        limiar_persistente_impacto=lim_imp,
+        limiar_persistente_desvio_pct=lim_dev,
     )
 
 
@@ -211,3 +248,40 @@ def load_settings() -> Settings:
         thresholds=thresholds,
         schema_path=schema_path,
     )
+
+
+def aplicar_overrides_thresholds(
+    thresholds: DomainThresholds,
+    top_n_doi: Optional[int] = None,
+    top_n_forward: Optional[int] = None,
+    top_n_oportunidades: Optional[int] = None,
+    top_n_riscos: Optional[int] = None,
+) -> DomainThresholds:
+    """
+    Aplica overrides de sessao (CLI) sobre DomainThresholds imutavel.
+
+    ``top_n_riscos`` e legado: se informado sem doi/forward, aplica aos dois.
+    """
+    from dataclasses import replace
+
+    kwargs: Dict[str, int] = {}
+    if top_n_riscos is not None and top_n_doi is None and top_n_forward is None:
+        if top_n_riscos < 1:
+            raise ValueError("top_n_riscos deve ser >= 1.")
+        kwargs["top_n_doi"] = top_n_riscos
+        kwargs["top_n_forward"] = top_n_riscos
+    if top_n_doi is not None:
+        if top_n_doi < 1:
+            raise ValueError("top_n_doi deve ser >= 1.")
+        kwargs["top_n_doi"] = top_n_doi
+    if top_n_forward is not None:
+        if top_n_forward < 1:
+            raise ValueError("top_n_forward deve ser >= 1.")
+        kwargs["top_n_forward"] = top_n_forward
+    if top_n_oportunidades is not None:
+        if top_n_oportunidades < 1:
+            raise ValueError("top_n_oportunidades deve ser >= 1.")
+        kwargs["top_n_oportunidades"] = top_n_oportunidades
+    if not kwargs:
+        return thresholds
+    return replace(thresholds, **kwargs)

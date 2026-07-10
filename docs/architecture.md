@@ -207,9 +207,43 @@ Configuraveis por cliente/setor. Defaults calibrados para Mondelez FMCG.
 `DomainThresholds`. Impacto financeiro bruto inalterado; peso so na
 ordenacao. Demais tipos usam peso 1.0.
 
-**Fronteira forward:** DOI < `DOI_RUPTURA_DIAS` + SO acima = ruptura
-(nunca oportunidade). Oportunidade exige DOI em
-`[DOI_RUPTURA, DOI_OVERSTOCK]`.
+**Fronteira forward:**
+- DOI < `DOI_RUPTURA_DIAS` + SO acima = **ruptura** (risco primario).
+- Se alem disso o plano forward esta subdimensionado
+  (`divergencia_forward < -LIMIAR_PREMISSA_FURADA`), gera **dual framing**:
+  mantem ruptura e emite tambem `capturar_oportunidade` (subir SI para
+  capturar demanda). A oportunidade pura (sem ruptura) continua exigindo
+  DOI em `[DOI_RUPTURA, DOI_OVERSTOCK]`.
+
+**Gate DOI overstock (anti falso-positivo historico):**
+`rebalancear_estoque_doi` com gap > 0 e suprimido se tendencia
+`melhorando`, ou se tendencia `estavel` e `|SO desvio%| < LIMIAR_DESVIO`.
+
+### 7.2b Resumo executivo e filtro de ruido
+
+Bloco deterministico estratificado por topico (script do analista).
+Nao substitui a fila HITL completa.
+
+| Variavel | Padrao | Descricao |
+|---|---|---|
+| `TOP_N_DOI` | `5` | Top N estoque/DOI (`rebalancear_estoque_doi`) |
+| `TOP_N_FORWARD` | `5` | Top N plano forward (`questionar_premissa_plano`) |
+| `TOP_N_OPORTUNIDADES` | `5` | Top N oportunidades (`capturar_oportunidade`) |
+| `LIMIAR_PERSISTENTE_IMPACTO` | `100.0` | Min \|impacto\| para enfileirar desvio persistente |
+| `LIMIAR_PERSISTENTE_DESVIO_PCT` | `5.0` | Min \|media desvio%\| para enfileirar persistente |
+
+CLI: `--top-doi N` / `--top-forward N` / `--top-opps N`.
+
+Dentro de DOI e de forward, o N e repartido entre polaridades
+(ruptura vs overstock) para NR alto de um padrao nao eliminar o outro.
+Legado: `TOP_N_RISCOS` / `--top-riscos` replica N para DOI e FORWARD.
+
+Filtro persistente: nao gera proposicao se
+`|impacto| < LIMIAR_PERSISTENTE_IMPACTO` **e**
+`|media_desvio%| < LIMIAR_PERSISTENTE_DESVIO_PCT`.
+
+Saida em `state.resumo_executivo` (`top_doi`, `top_forward`,
+`top_oportunidades`, com sublistas de polaridade quando aplicavel).
 
 ### 7.3 Portabilidade multi-dominio (ADR-0024)
 

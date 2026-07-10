@@ -1475,13 +1475,26 @@ com o plano futuro para detectar premissas inconsistentes e projetar riscos.
   \]
 \end{definicao}
 
+\begin{definicao}[Dual Framing Forward]
+  Se $\text{risco}(k)=\text{ruptura}$ \textbf{e} o plano forward est\'a
+  subdimensionado ($\text{div}_k < -\tau_f$), o Dominion emite
+  \textbf{dois} alertas para o mesmo $k$:
+  \begin{enumerate}
+    \item alerta primario com $\text{risco}=\text{ruptura}$
+      ($\texttt{dual\_com\_ruptura}=\text{false}$);
+    \item alerta adicional com $\text{risco}=\text{oportunidade}$
+      ($\texttt{dual\_com\_ruptura}=\text{true}$).
+  \end{enumerate}
+  A ruptura nunca \'e substitu\'ida pela oportunidade. A oportunidade
+  pura (sem dual) continua exigindo DOI em $[\tau_r,\tau_o]$.
+\end{definicao}
+
 \begin{observacao}
   A distin\c{c}\~ao \textbf{oportunidade vs ruptura} \'e cr\'itica e
   \textbf{n\~ao depende de SKU}: DOI abaixo de $\tau_r$ com SO acima do
-  plano \'e sempre ruptura (estoque insuficiente para capturar demanda).
-  Oportunidade exige DOI na faixa saud\'avel $[\tau_r, \tau_o]$ com plano
-  forward subdimensionado. Exemplo: Belvita com DOI $\approx 8$d e SO
-  acima do plano classifica-se como ruptura, n\~ao oportunidade.
+  plano gera sempre ruptura (estoque insuficiente). Se o plano ainda
+  estiver curto, o dual framing adiciona oportunidade de capturar
+  demanda (subir SI), alinhado ao script do analista sem hardcode.
 \end{observacao}
 
 
@@ -2028,6 +2041,11 @@ onde $g_k = \sigma.v - \sigma.r$ (gap em dias).
     \mathcal{T}(k).\text{tendencia} = \text{melhorando} \;\wedge\; g_k > 0
     \implies \pi \text{ n\~ao \'e gerada (suprimida)}
   \]
+  \[
+    \mathcal{T}(k).\text{tendencia} = \text{estavel} \;\wedge\;
+    |\Delta^{\text{SO}}_k| < \tau_d \;\wedge\; g_k > 0
+    \implies \pi \text{ n\~ao \'e gerada (suprimida)}
+  \]
   Racional: DOI acima do target mas \textbf{caindo} indica que o
   problema j\'a est\'a se resolvendo; alertar seria redundante.
 \end{caixaguardrail}
@@ -2135,6 +2153,56 @@ Depois da ordena\c{c}\~ao, os IDs s\~ao reatribu\'idos sequencialmente
   explica\c{c}\~ao LLM usam o \textbf{mesmo} $I^{\text{prio}}$, para
   n\~ao desfazer o boost do Optimus ao reordenar s\'o por $I_f$ bruto.
 \end{observacao}
+
+\subsection{Resumo Executivo (Estratificado por T\'opico)}
+
+Ap\'os a fila, o Nexus monta um quadro determin\'istico estratificado
+(DOI / forward / oportunidades). Ranking misturado \'e proibido:
+NR alto de DOI n\~ao remove alertas forward do quadro.
+
+\begin{definicao}[Resumo Executivo Estratificado]
+  Sejam
+  $N_d = \Theta_{\text{top\_n\_doi}}$,
+  $N_f = \Theta_{\text{top\_n\_forward}}$,
+  $N_o = \Theta_{\text{top\_n\_oportunidades}}$
+  (defaults 5; override CLI
+  \texttt{--top-doi}/\texttt{--top-forward}/\texttt{--top-opps};
+  legado \texttt{--top-riscos} replica $N$ para DOI e forward).
+  \[
+    \mathcal{D} = \{\pi \in \Pi \mid \pi.\tau =
+      \texttt{rebalancear\_estoque\_doi}\}
+  \]
+  \[
+    \mathcal{F} = \{\pi \in \Pi \mid \pi.\tau =
+      \texttt{questionar\_premissa\_plano}\}
+  \]
+  \[
+    \mathcal{O} = \{\pi \in \Pi \mid \pi.\tau =
+      \texttt{capturar\_oportunidade}\}
+  \]
+  Dentro de $\mathcal{D}$ e $\mathcal{F}$, o top $N$ \'e repartido em
+  cotas $\lceil N/2\rceil$ / $\lfloor N/2\rfloor$ entre polaridades
+  \texttt{ruptura} e \texttt{overstock} (diversidade anti-overfit),
+  ordenando cada cota por $-I^{\text{prio}}$.
+  \[
+    \text{top\_oportunidades} =
+      \text{sort}(\mathcal{O}, -I^{\text{prio}})[:N_o]
+  \]
+  Gravado em $\state.\texttt{resumo\_executivo}$ (inclui metadados
+  \texttt{diversidade\_doi} / \texttt{diversidade\_forward}).
+\end{definicao}
+
+\begin{definicao}[Filtro de Ru\'ido Persistente]
+  Um sinal \texttt{desvio\_persistente} s\'o gera proposi\c{c}\~ao se
+  \[
+    I_f \geq \Theta_{\text{limiar\_persistente\_impacto}}
+    \;\lor\;
+    \abs{\overline{\Delta}^{\text{pers}}} \geq
+      \Theta_{\text{limiar\_persistente\_desvio}}
+  \]
+  (defaults $100$ e $5\%$). Caso contr\'ario \'e descartado como ru\'ido.
+\end{definicao}
+
 
 
 \subsection{Retry com Feedback}
@@ -3145,6 +3213,10 @@ com defaults Mondelez:
   \texttt{PESO\_QUESTIONAR\_PREMISSA} & $w_q$ & 1.5 & Peso ordenacao forward \\
   \texttt{PESO\_CAPTURAR\_OPORTUNIDADE} & $w_o$ & 1.4 & Peso ordenacao oportunidade \\
   \texttt{PESO\_INVESTIGAR\_DESVIO\_PERSISTENTE} & $w_p$ & 1.1 & Peso ordenacao persistente \\
+  \texttt{TOP\_N\_RISCOS} & $N_r$ & 3 & Tamanho bloco riscos executivo \\
+  \texttt{TOP\_N\_OPORTUNIDADES} & $N_o$ & 5 & Tamanho bloco oportunidades \\
+  \texttt{LIMIAR\_PERSISTENTE\_IMPACTO} & $I_{\min}$ & 100 & Filtro ruido persistente \\
+  \texttt{LIMIAR\_PERSISTENTE\_DESVIO\_PCT} & $\Delta_{\min}$ & 5.0 & Filtro ruido persistente \\
   \bottomrule
 \end{tabular}
 \end{center}

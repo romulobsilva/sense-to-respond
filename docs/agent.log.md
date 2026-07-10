@@ -467,6 +467,98 @@ Mondelez e permitir reutilizacao do pipeline com outros clientes/setores.
 
 ### Proximos passos
 - Reexecutar CSV Mondelez e confirmar Tang forward acima do Ovo no top HITL
+- Validar resumo executivo no CSV vivo (--top-riscos 5)
+
+---
+
+## Sessao 18 - 2026-07-10 - Dual framing + diversidade anti-overfit
+
+### Contexto
+- Avaliacao vs Excel gabarito/script: Tang rotulo, Halls/Oreo fora do top,
+  Milka falso-positivo historico.
+- Usuario pediu melhorias sem overfit (sem ScenarioTag/SKU).
+
+### Decisoes
+- Dual framing: ruptura + plano curto -> tambem `capturar_oportunidade`
+- Gate DOI: tendencia estavel + |SO|<limiar suprime overstock
+- Resumo: cota ruptura/overstock dentro de DOI e forward
+- Prompt/LLM cita blocos; nao reordena
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `tools_parametrizadas.py` | dual alertas forward |
+| `optimus.py` | gate estavel + diversidade resumo |
+| `agent.py` / `sinais.py` | prompt e docstring |
+| `tests/test_temporal.py` / `test_resumo_executivo.py` | novos casos |
+| docs + LaTeX + diagrams | sync 1.6.5 |
+
+### Testes
+- `pytest` resumo/temporal/optimus/guardrails: OK
+
+### Proximos passos
+- Reexecutar CSV Mondelez e validar Tang dual + Halls no quadro
+- SI-SO / aceleracao restantes (1.6.1)
+
+---
+
+## Sessao 17 - 2026-07-10 - Resumo executivo estratificado
+
+### Contexto
+- Run vivo: top "riscos" misturado engolia forward (DOI com NR alto).
+- Usuario aprovou top N por topico (nao cota nem ranking unico).
+
+### Decisoes
+- Blocos: `top_doi`, `top_forward`, `top_oportunidades`
+- Config/CLI: `TOP_N_DOI` / `TOP_N_FORWARD` / `TOP_N_OPORTUNIDADES`
+- Legado `--top-riscos` / `TOP_N_RISCOS` replica N para DOI+FORWARD
+- Filtro persistente da sessao 16 permanece
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `config.py` / `.env.example` / `main.py` | N por topico + legado |
+| `optimus.py` | montar_resumo estratificado |
+| `tests/test_resumo_executivo.py` | DOI alto nao remove forward |
+| docs + LaTeX | sync 1.6.4b |
+
+### Testes
+- `pytest tests/test_resumo_executivo.py`: OK
+
+### Proximos passos
+- Reexecutar CSV com `--top-doi 5 --top-forward 5 --top-opps 5`
+- Validar Tang/Belvita em `top_forward` na auditoria
+
+---
+
+## Sessao 16 - 2026-07-10 - Resumo executivo top N + filtro persistente
+
+### Contexto
+- Proximo passo apos fila ponderada: quadro "top risks & opps" do script
+  do analista + limpeza de desvio persistente com impacto ~0.
+- Usuario pediu N parametrizavel (top 5 / top 10) via config e CLI.
+
+### Decisoes
+- Spec em planning 1.6.4 + architecture 7.2b + state_contract
+- Evoluiu na sessao 17 para estratificacao por topico
+- Filtro persistente: impacto < 100 E |desvio%| < 5 -> nao gera prop
+- Fila completa preservada; resumo e bloco paralelo
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `config.py` / `.env.example` / `main.py` | top N + limiares + CLI |
+| `optimus.py` | filtro persistente + montar_resumo_executivo |
+| `nexus.py` / `state_types.py` / `agent.py` | state, auditoria, prompt |
+| `tests/test_resumo_executivo.py` | filtro, N, fixture Belvita/Tang |
+| docs + LaTeX | sync |
+
+### Testes
+- `pytest tests/test_resumo_executivo.py` (+ optimus/guardrails): OK
+
+### Proximos passos
+- (feito na sessao 17) estratificar DOI/forward
+- Supply/CSL / desequilibrio SI-SO (fase 1.6.1 restante)
 
 ---
 

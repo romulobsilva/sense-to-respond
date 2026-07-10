@@ -343,6 +343,57 @@ existem na 1.5b.
 - [x] Pesos de prioridade em `DomainThresholds` / `.env`
 - [x] Testes sinteticos (sem SKU/ScenarioTag hardcoded no codigo de producao)
 
+### 1.6.4 Resumo executivo + filtro de ruido (script analista)
+Quadro "top risks & opps" deterministico (anti-overfit) e limpeza de
+desvio persistente irrelevante. N parametrizavel pelo usuario.
+
+**Spec:**
+- [x] `DomainThresholds`: `top_n_riscos`, `top_n_oportunidades` (default 3)
+- [x] `DomainThresholds`: `limiar_persistente_impacto`, `limiar_persistente_desvio_pct`
+- [x] CLI: `--top-riscos N` / `--top-opps N` sobrescrevem o default da sessao
+- [x] `filtrar` desvio_persistente se `|impacto| < limiar` E `|media_desvio%| < limiar`
+- [x] `montar_resumo_executivo(proposicoes, thresholds)`: top N riscos e top N opps por `I_prio`
+- [x] Riscos (tipos): `questionar_premissa_plano`, `rebalancear_estoque_doi`
+- [x] Oportunidades (tipos): `capturar_oportunidade`
+- [x] Gravado em `state.resumo_executivo` + auditoria + impressao no terminal
+- [x] Incluido no contexto da explicacao LLM (somente citacao; LLM nao recalcula)
+- [x] Testes sinteticos: filtro ruido; N=5 vs N=3; Belvita/Tang em riscos (fixture)
+
+**Criterios de aceite:**
+- [x] Alterar `TOP_N_RISCOS=5` (ou CLI) muda o tamanho do bloco sem alterar R$
+- [x] Persistente com desvio 1% e impacto ~0 nao entra na fila
+- [x] Belvita ruptura e/ou Tang forward aparecem no bloco riscos com N suficiente
+- [x] Fila completa continua existindo (resumo nao substitui HITL detalhado)
+
+### 1.6.4b Resumo executivo estratificado (top N por topico)
+- [x] Blocos separados: DOI, forward, oportunidades (sem ranking misturado)
+- [x] `TOP_N_DOI` / `TOP_N_FORWARD` / `TOP_N_OPORTUNIDADES` + CLI
+- [x] DOI alto nao elimina forward do quadro executivo
+- [x] Testes: forward aparece no bloco forward mesmo com DOI de maior NR
+- [x] `TOP_N_RISCOS` / `--top-riscos` legado: replica N para DOI e FORWARD
+
+### 1.6.5 Cobertura gabarito anti-overfit (dual framing + diversidade)
+Fecha gaps vs guia Mondelez / script analista **sem** hardcode de SKU
+ou ScenarioTag.
+
+**Spec:**
+- [x] Dual framing forward: ruptura + plano subdimensionado gera **tambem**
+  `capturar_oportunidade` (nao substitui ruptura)
+- [x] Gate DOI overstock: se tendencia `estavel` e |SO desvio| < limiar,
+  nao gera `rebalancear_estoque_doi` (alem do suppress `melhorando`)
+- [x] Resumo DOI estratificado: metade ruptura / metade overstock dentro de N
+- [x] Resumo forward estratificado: metade ruptura / metade overstock dentro de N
+- [x] Prompt explicacao: citar dual framing e blocos estratificados
+- [x] Testes sinteticos (sem SKU de producao hardcoded nas regras)
+- [x] Sync architecture, testing, contracts, prompts, diagrams, LaTeX, agent.log
+
+**Criterios de aceite:**
+- [x] DOI critico + SO acima + plano curto -> ruptura E oportunidade
+- [x] DOI alto + tendencia estavel + SO perto do plano -> sem rebalancear
+- [x] Top forward inclui overstock mesmo com rupturas de maior NR
+- [x] Top DOI inclui ruptura e overstock quando ambos existem
+- [x] Nenhuma regra por ScenarioTag / nome de marca
+
 ### 1.6.1 Analises temporais e comparativas
 Em `tools_parametrizadas.py` (mesmo arquivo da 1.5b):
 - [ ] `analisar_tendencia(df, mapa, janela=4) -> dict` -- tendencia por SKU nas ultimas N semanas

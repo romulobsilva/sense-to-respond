@@ -11,14 +11,19 @@ Tipos de proposicao suportados:
     - ajustar_plano_sellin: desvio sell-in >= 5%
     - rebalancear_estoque_doi: DOI fora da politica (gap >= 7 dias)
     - questionar_premissa_plano: plano forward diverge da tendencia recente
-    - capturar_oportunidade: SO acima do plano + DOI saudavel (oportunidade, nao risco)
+    - capturar_oportunidade: SO acima + plano curto (DOI saudavel, ou dual
+      com ruptura quando DOI critico)
     - investigar_desvio_persistente: desvio no mesmo sinal por N meses
     - investigar_desvio_canal: SI e SO divergem no mesmo SKU (futuro)
 
 Detector de falso-positivo (DOI):
-  Se um sinal doi_fora_politica tem tendencia "melhorando" (campo via
-  analise_tendencia), a proposicao de rebalancear e suprimida para evitar
-  alertas sobre DOI que ja esta normalizando.
+  Se um sinal doi_fora_politica tem tendencia "melhorando", a proposicao
+  de rebalancear e suprimida. Se tendencia "estavel" e |SO desvio| < limiar,
+  tambem e suprimida (overstock historico sem evidencia ativa).
+
+Dual framing (forward):
+  Ruptura primaria permanece; se plano subdimensionado, Optimus tambem
+  emite capturar_oportunidade (DOI critico + demanda acima do plano).
 
 Enriquecimento de causa-raiz (DOI overstock):
   Quando overstock detectado e SO desacelerando (so_ritmo do sinal de
@@ -27,7 +32,7 @@ Enriquecimento de causa-raiz (DOI overstock):
 Impacto financeiro: sempre deterministico, nunca calculado por LLM.
 """
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from state_types import Proposicao, Sinal, TIPOS_DECISAO_MVP
 
@@ -263,8 +268,15 @@ def gerar_proposicoes(
             if abs(gap_dias) >= _limiar_doi_gap:
                 chave_tend = f"{sinal.sku}|{sinal.pais}|{sinal.canal}"
                 tend = tendencia_idx.get(chave_tend)
-                if tend is not None and tend.tendencia == "melhorando" and gap_dias > 0:
-                    continue
+                if tend is not None and gap_dias > 0:
+                    # Overstock: suprimir falso-positivo historico / normalizando
+                    if tend.tendencia == "melhorando":
+                        continue
+                    if (
+                        tend.tendencia == "estavel"
+                        and abs(tend.desvio_pct) < _limiar_desvio
+                    ):
+                        continue
                 contador += 1
                 impacto = _estimar_impacto_nr(sinal)
                 tipo = "rebalancear_estoque_doi"
@@ -342,12 +354,24 @@ def gerar_proposicoes(
             impacto = _estimar_impacto_nr(sinal)
             tipo = "capturar_oportunidade"
             dims = _dim_label(sinal)
-            descricao = (
-                f"OPORTUNIDADE: SKU {sinal.sku}{dims} -- SO acima do plano "
-                f"({sinal.desvio_pct:+.1f}%), DOI {sinal.valor:.0f}d "
-                f"(saudavel). Plano forward subdimensionado: aumentar "
-                f"sell-in e realocar estoque para capturar demanda."
-            )
+            _doi_rupt = 15.0
+            if thresholds is not None:
+                _doi_rupt = float(thresholds.doi_ruptura_dias)
+            if sinal.valor > 0 and sinal.valor < _doi_rupt:
+                descricao = (
+                    f"OPORTUNIDADE (dual com ruptura): SKU {sinal.sku}{dims} "
+                    f"-- SO acima do plano ({sinal.desvio_pct:+.1f}%), "
+                    f"DOI {sinal.valor:.0f}d critico. Plano forward "
+                    f"subdimensionado: subir SI/producao para capturar "
+                    f"demanda e evitar falta."
+                )
+            else:
+                descricao = (
+                    f"OPORTUNIDADE: SKU {sinal.sku}{dims} -- SO acima do plano "
+                    f"({sinal.desvio_pct:+.1f}%), DOI {sinal.valor:.0f}d "
+                    f"(saudavel). Plano forward subdimensionado: aumentar "
+                    f"sell-in e realocar estoque para capturar demanda."
+                )
             proposicoes.append(Proposicao(
                 proposicao_id=f"P{contador}",
                 tipo=tipo,
@@ -361,8 +385,17 @@ def gerar_proposicoes(
             ))
 
         if sinal.tipo == "desvio_persistente":
-            contador += 1
             impacto = _estimar_impacto_nr(sinal)
+            media_abs = abs(sinal.media_desvio_persistente_pct)
+            lim_imp = 100.0
+            lim_dev = 5.0
+            if thresholds is not None:
+                lim_imp = float(thresholds.limiar_persistente_impacto)
+                lim_dev = float(thresholds.limiar_persistente_desvio_pct)
+            # Ruido: impacto baixo E desvio medio baixo -- nao enfileirar
+            if impacto < lim_imp and media_abs < lim_dev:
+                continue
+            contador += 1
             tipo = "investigar_desvio_persistente"
             dims = _dim_label(sinal)
             direcao_txt = "acima" if sinal.media_desvio_persistente_pct > 0 else "abaixo"
@@ -412,3 +445,214 @@ def proposicoes_para_state(proposicoes: List[Proposicao]) -> List[Dict[str, Any]
     Serializa proposicoes para gravacao no state.
     """
     return [p.para_dict() for p in proposicoes]
+
+
+# Tipos do quadro executivo estratificado (script do analista). Genericos.
+TIPOS_DOI_EXECUTIVO = frozenset({
+    "rebalancear_estoque_doi",
+})
+TIPOS_FORWARD_EXECUTIVO = frozenset({
+    "questionar_premissa_plano",
+})
+TIPOS_OPORTUNIDADE_EXECUTIVO = frozenset({
+    "capturar_oportunidade",
+})
+
+
+def _polaridade_doi(proposicao: Proposicao) -> str:
+    """
+    Classifica DOI como ruptura (estoque baixo) ou overstock.
+
+    Usa texto deterministico gerado pelo Optimus (sem SKU hardcoded).
+    """
+    desc = proposicao.descricao.upper()
+    if "AUMENTAR SELL-IN" in desc or "RUPTURA DE ESTOQUE" in desc:
+        return "ruptura"
+    return "overstock"
+
+
+def _polaridade_forward(proposicao: Proposicao) -> str:
+    """Classifica forward como ruptura, overstock ou gap de plano."""
+    desc = proposicao.descricao.upper()
+    if "RUPTURA" in desc:
+        return "ruptura"
+    if "OVERSTOCK" in desc:
+        return "overstock"
+    return "gap"
+
+
+def _repartir_n(total: int) -> Tuple[int, int]:
+    """Reparte N em duas cotas (ceil/floor) para diversidade de polaridade."""
+    if total < 1:
+        return 0, 0
+    return (total + 1) // 2, total // 2
+
+
+def _top_diversificado(
+    candidatos: List[Proposicao],
+    n_total: int,
+    polaridade_fn,
+    chave_a: str,
+    chave_b: str,
+) -> Tuple[List[Proposicao], Dict[str, int]]:
+    """
+    Seleciona top N garantindo cota para duas polaridades principais.
+
+    Itens residuais (ex.: gap) preenchem sobras.
+    """
+    n_a, n_b = _repartir_n(n_total)
+    grupo_a = [p for p in candidatos if polaridade_fn(p) == chave_a]
+    grupo_b = [p for p in candidatos if polaridade_fn(p) == chave_b]
+    outros = [
+        p for p in candidatos
+        if polaridade_fn(p) not in (chave_a, chave_b)
+    ]
+    escolhidos: List[Proposicao] = []
+    escolhidos.extend(grupo_a[:n_a])
+    escolhidos.extend(grupo_b[:n_b])
+    if len(escolhidos) < n_total:
+        resto = [
+            p for p in (grupo_a[n_a:] + grupo_b[n_b:] + outros)
+            if p not in escolhidos
+        ]
+        escolhidos.extend(resto[: n_total - len(escolhidos)])
+    meta = {
+        f"n_{chave_a}": n_a,
+        f"n_{chave_b}": n_b,
+        f"candidatos_{chave_a}": len(grupo_a),
+        f"candidatos_{chave_b}": len(grupo_b),
+    }
+    return escolhidos[:n_total], meta
+
+
+def montar_resumo_executivo(
+    proposicoes: List[Proposicao],
+    thresholds: Optional["DomainThresholds"] = None,
+) -> Dict[str, Any]:
+    """
+    Monta top N por topico (DOI, forward, oportunidades) por I_prio.
+
+    Deterministico e estratificado: NR alto de DOI nao remove forward.
+    Dentro de DOI/forward, reparte N entre ruptura e overstock.
+    """
+    n_doi = 5
+    n_fwd = 5
+    n_opps = 5
+    if thresholds is not None:
+        n_doi = int(thresholds.top_n_doi)
+        n_fwd = int(thresholds.top_n_forward)
+        n_opps = int(thresholds.top_n_oportunidades)
+
+    def _key(p: Proposicao) -> Tuple[float, int]:
+        return (
+            -_impacto_priorizado(p.impacto_financeiro, p.tipo, thresholds),
+            p.urgencia_horas,
+        )
+
+    doi = sorted(
+        [p for p in proposicoes if p.tipo in TIPOS_DOI_EXECUTIVO],
+        key=_key,
+    )
+    forward = sorted(
+        [p for p in proposicoes if p.tipo in TIPOS_FORWARD_EXECUTIVO],
+        key=_key,
+    )
+    opps = sorted(
+        [p for p in proposicoes if p.tipo in TIPOS_OPORTUNIDADE_EXECUTIVO],
+        key=_key,
+    )
+
+    doi_sel, doi_meta = _top_diversificado(
+        doi, n_doi, _polaridade_doi, "ruptura", "overstock"
+    )
+    fwd_sel, fwd_meta = _top_diversificado(
+        forward, n_fwd, _polaridade_forward, "ruptura", "overstock"
+    )
+
+    def _item(p: Proposicao) -> Dict[str, Any]:
+        item: Dict[str, Any] = {
+            "proposicao_id": p.proposicao_id,
+            "tipo": p.tipo,
+            "titulo": p.titulo,
+            "skus": list(p.skus),
+            "impacto_financeiro": p.impacto_financeiro,
+            "impacto_priorizado": _impacto_priorizado(
+                p.impacto_financeiro, p.tipo, thresholds
+            ),
+            "urgencia_horas": p.urgencia_horas,
+            "descricao": p.descricao,
+        }
+        if p.tipo in TIPOS_DOI_EXECUTIVO:
+            item["polaridade"] = _polaridade_doi(p)
+        elif p.tipo in TIPOS_FORWARD_EXECUTIVO:
+            item["polaridade"] = _polaridade_forward(p)
+        return item
+
+    return {
+        "top_doi": [_item(p) for p in doi_sel],
+        "top_forward": [_item(p) for p in fwd_sel],
+        "top_oportunidades": [_item(p) for p in opps[:n_opps]],
+        "n_doi": n_doi,
+        "n_forward": n_fwd,
+        "n_oportunidades": n_opps,
+        "total_candidatos_doi": len(doi),
+        "total_candidatos_forward": len(forward),
+        "total_candidatos_oportunidade": len(opps),
+        "diversidade_doi": doi_meta,
+        "diversidade_forward": fwd_meta,
+    }
+
+
+def formatar_resumo_executivo_texto(resumo: Dict[str, Any]) -> str:
+    """Formata resumo executivo estratificado para terminal / contexto LLM."""
+    linhas: List[str] = [
+        (
+            f"=== RESUMO EXECUTIVO (top {resumo.get('n_doi', 0)} DOI / "
+            f"top {resumo.get('n_forward', 0)} forward / "
+            f"top {resumo.get('n_oportunidades', 0)} oportunidades) ==="
+        ),
+        (
+            f"Candidatos: doi={resumo.get('total_candidatos_doi', 0)}, "
+            f"forward={resumo.get('total_candidatos_forward', 0)}, "
+            f"oportunidades={resumo.get('total_candidatos_oportunidade', 0)}"
+        ),
+    ]
+    div_d = resumo.get("diversidade_doi") or {}
+    div_f = resumo.get("diversidade_forward") or {}
+    if isinstance(div_d, dict) and div_d:
+        linhas.append(
+            f"Diversidade DOI: cota ruptura={div_d.get('n_ruptura', 0)} "
+            f"overstock={div_d.get('n_overstock', 0)} "
+            f"(cand {div_d.get('candidatos_ruptura', 0)}/"
+            f"{div_d.get('candidatos_overstock', 0)})"
+        )
+    if isinstance(div_f, dict) and div_f:
+        linhas.append(
+            f"Diversidade forward: cota ruptura={div_f.get('n_ruptura', 0)} "
+            f"overstock={div_f.get('n_overstock', 0)} "
+            f"(cand {div_f.get('candidatos_ruptura', 0)}/"
+            f"{div_f.get('candidatos_overstock', 0)})"
+        )
+
+    def _secao(titulo: str, chave: str) -> None:
+        linhas.append("")
+        linhas.append(titulo)
+        itens = resumo.get(chave, [])
+        if not isinstance(itens, list) or not itens:
+            linhas.append("(nenhum)")
+            return
+        for i, item in enumerate(itens, start=1):
+            if not isinstance(item, dict):
+                continue
+            pol = item.get("polaridade")
+            pol_txt = f" [{pol}]" if pol else ""
+            linhas.append(
+                f"{i}. [{item.get('proposicao_id', '')}] {item.get('tipo', '')}{pol_txt} | "
+                f"{item.get('titulo', '')} | R$ {float(item.get('impacto_financeiro', 0)):.2f} "
+                f"(I_prio={float(item.get('impacto_priorizado', 0)):.2f})"
+            )
+
+    _secao("-- DOI / ESTOQUE --", "top_doi")
+    _secao("-- FORWARD / PLANO --", "top_forward")
+    _secao("-- OPORTUNIDADES --", "top_oportunidades")
+    return "\n".join(linhas)

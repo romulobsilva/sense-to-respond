@@ -53,6 +53,7 @@ Estas regras nao podem ser quebradas sem mudanca previa de arquitetura.
 | `validacao`        | `ResultadoValidacao   | None`               | Validador              | Nexus                                      | Sim, por tentativa |                 |
 | `critica`          | `ResultadoCritica     | None`               | Critic                 | Nexus                                      | Sim, por tentativa |                 |
 | `fila_nexus`       | `list[ItemFilaNexus]` | Nexus/Guardrails    | UI/main                | Sim, ao final da execucao                  |                    |                 |
+| `resumo_executivo` | `dict`                | Nexus/Optimus       | UI/main/LLM contexto   | Sim, ao final apos fila                    |                    |                 |
 | `acoes_executadas` | `list[str]`           | Harness             | Harness/Auditoria      | Append-only                                |                    |                 |
 | `handoffs`         | `list[Handoff]`       | Nexus               | Auditoria              | Append-only                                |                    |                 |
 | `auditoria`        | `AuditTrail           | dict                | None`                  | Audit/Harness/Nexus                        | main.py/UI         | Sim, por sessao |
@@ -357,6 +358,34 @@ Regras:
 
 ---
 
+### 5.9 `resumo_executivo`
+
+Dict deterministico montado apos a fila (script do analista).
+
+Campos:
+
+```text
+top_doi                 -- list[dict] rebalancear_estoque_doi (cota ruptura/overstock)
+top_forward             -- list[dict] questionar_premissa_plano (cota ruptura/overstock)
+top_oportunidades       -- list[dict] capturar_oportunidade (inclui dual framing)
+n_doi / n_forward / n_oportunidades
+total_candidatos_*
+diversidade_doi         -- cotas e contagens por polaridade
+diversidade_forward
+```
+
+Cada item do top inclui: proposicao_id, tipo, titulo, skus,
+impacto_financeiro, impacto_priorizado, urgencia_horas, descricao,
+e polaridade (quando DOI/forward).
+
+Regras:
+
+* Nao substitui `fila_nexus`.
+* LLM so cita; nao recalcula ranking.
+* Dual framing: oportunidade com DOI critico coexiste com ruptura.
+
+---
+
 ## 6. Responsabilidade por campo
 
 ### 6.1 Nexus
@@ -366,6 +395,7 @@ Pode escrever:
 ```text
 pergunta
 fila_nexus
+resumo_executivo
 handoffs
 auditoria
 ```

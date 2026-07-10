@@ -53,8 +53,9 @@ sequenceDiagram
             C->>SB: critica atualizada
         else critic ok
             N->>SB: montar fila_nexus
+            N->>SB: montar resumo_executivo (DOI/forward/opps)
         end
 
         N->>N: output guardrail
-        N->>U: resposta final e fila para revisao humana
+        N->>U: resposta final, resumo e fila para revisao humana
     end

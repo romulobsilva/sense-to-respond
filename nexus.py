@@ -32,7 +32,9 @@ from hitl import (
 )
 from optimus import (
     _impacto_priorizado,
+    formatar_resumo_executivo_texto,
     gerar_proposicoes,
+    montar_resumo_executivo,
     proposicoes_para_state,
 )
 from sinais import extrair_sinais_de_resultados
@@ -69,6 +71,7 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
     "validacao_deterministica",
     "optimus_retry",
     "fila_nexus",
+    "resumo_executivo",
     "output_guardrail",
     "sessao_fim",
     "input_guardrail_blocked",
@@ -796,6 +799,15 @@ class Nexus:
                 },
             )
 
+        resumo_exec = montar_resumo_executivo(
+            proposicoes, thresholds=self.settings.thresholds
+        )
+        state["resumo_executivo"] = resumo_exec
+        texto_resumo = formatar_resumo_executivo_texto(resumo_exec)
+        self._log(texto_resumo)
+        if auditoria is not None:
+            auditoria.registrar("resumo_executivo", resumo_exec)
+
         resumo_compacto = self._montar_resumo_compacto_critic(state)
         if resumo_compacto is not None:
             contexto = resumo_compacto
@@ -820,7 +832,8 @@ class Nexus:
         )
         texto_llm = self.agente.gerar_explicacao(
             pergunta_usuario,
-            f"{contexto}\n\n=== Top {len(top_props)} Proposicoes Optimus "
+            f"{contexto}\n\n{texto_resumo}\n\n"
+            f"=== Top {len(top_props)} Proposicoes Optimus "
             f"(de {len(proposicoes)} total) ===\n{contexto_props}",
             registrar_log=self._log,
             auditoria=auditoria,

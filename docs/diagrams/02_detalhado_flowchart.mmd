@@ -39,6 +39,7 @@ flowchart TB
 
     subgraph SAIDA["Camada de saida"]
         FILA[Fila Nexus ranqueada]
+        RES[Resumo executivo estratificado<br/>DOI / forward / opps + polaridade]
         REV[Flag de revisao obrigatoria]
         OG[Output Guardrail<br/>disclaimer + evidencias + limitacoes]
         HITL[Human-in-the-loop<br/>usuario decide]
@@ -67,4 +68,4 @@ flowchart TB
     RETRY -->|sim| OPT
     RETRY -->|nao| FILA
 
-    FILA --> REV --> OG --> HITL
+    FILA --> RES --> REV --> OG --> HITL

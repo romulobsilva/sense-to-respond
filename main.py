@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from agent import AgenteOpenAI
-from config import load_settings
+from config import aplicar_overrides_thresholds, load_settings
+from dataclasses import replace
 from harness import Harness, TIPOS_RESUMO_AUDITORIA as TIPOS_HARNESS
 from hitl import (
     HITLArquivo,
@@ -17,6 +18,7 @@ from hitl import (
     InterfaceHITL,
 )
 from nexus import Nexus, TIPOS_RESUMO_AUDITORIA as TIPOS_NEXUS
+from optimus import formatar_resumo_executivo_texto
 
 
 def _formatar_dados_resumo(dados: Dict[str, Any]) -> str:
@@ -136,9 +138,46 @@ def main() -> None:
         dest="arquivo_entrada",
         help="Caminho para CSV/XLSX de entrada (ativa DataShield).",
     )
+    parser.add_argument(
+        "--top-doi",
+        type=int,
+        default=None,
+        dest="top_doi",
+        help="Override TOP_N_DOI do resumo executivo.",
+    )
+    parser.add_argument(
+        "--top-forward",
+        type=int,
+        default=None,
+        dest="top_forward",
+        help="Override TOP_N_FORWARD do resumo executivo.",
+    )
+    parser.add_argument(
+        "--top-opps",
+        type=int,
+        default=None,
+        dest="top_opps",
+        help="Override TOP_N_OPORTUNIDADES do resumo executivo.",
+    )
+    parser.add_argument(
+        "--top-riscos",
+        type=int,
+        default=None,
+        dest="top_riscos",
+        help="Legado: aplica o mesmo N a DOI e FORWARD.",
+    )
     args = parser.parse_args()
 
     settings = load_settings()
+    thresholds = aplicar_overrides_thresholds(
+        settings.thresholds,
+        top_n_doi=args.top_doi,
+        top_n_forward=args.top_forward,
+        top_n_oportunidades=args.top_opps,
+        top_n_riscos=args.top_riscos,
+    )
+    if thresholds is not settings.thresholds:
+        settings = replace(settings, thresholds=thresholds)
     agente = AgenteOpenAI(settings)
 
     pergunta = (
@@ -199,6 +238,10 @@ def main() -> None:
         explicacao = resultados.get("explicacao", "")
         print(explicacao)
     print("=" * 60)
+
+    resumo_exec = resultado.get("resumo_executivo")
+    if isinstance(resumo_exec, dict):
+        print("\n" + formatar_resumo_executivo_texto(resumo_exec))
 
     fila = resultado.get("fila_nexus", [])
     if isinstance(fila, list):

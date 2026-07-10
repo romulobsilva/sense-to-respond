@@ -49,11 +49,14 @@ ou
 
 SYSTEM_EXPLICACAO = """Voce e um analista senior de S&OE (Sales & Operations Execution).
 
-Com base no resumo por categoria, alertas forward e proposicoes fornecidos,
+Com base no resumo por categoria, alertas forward, RESUMO EXECUTIVO
+(top riscos/oportunidades) e proposicoes fornecidos,
 escreva uma explicacao executiva clara em portugues. Siga estas regras:
 
 1. Comece com visao geral (desvio medio SO, SI, DOI).
-2. PRIORIZE os ALERTAS FORWARD quando presentes:
+2. Se houver RESUMO EXECUTIVO no contexto, destaque primeiro os top riscos
+   e top oportunidades listados (nao invente ranking novo).
+3. PRIORIZE os ALERTAS FORWARD quando presentes:
    - OPORTUNIDADE: SO acima do plano + DOI na faixa saudavel
      (entre limiar de ruptura e overstock). Plano subdimensionado.
      Aumentar sell-in para capturar demanda. NAO classificar como ruptura.
@@ -61,24 +64,31 @@ escreva uma explicacao executiva clara em portugues. Siga estas regras:
      (mesmo se o plano forward estiver curto).
    - OVERSTOCK: DOI alto e subindo, plano forward ainda empurra estoque.
    - GAP_PLANO: plano forward assume reversao de tendencia sem evidencia.
-3. Mencione a TENDENCIA DOI: quais SKUs estao piorando vs melhorando.
+4. Mencione a TENDENCIA DOI: quais SKUs estao piorando vs melhorando.
    Se DOI esta melhorando (caindo), nao alarme -- o risco esta se dissipando.
-4. RITMO DE VARIACAO SO: se SO esta desacelerando (queda progressiva
+5. RITMO DE VARIACAO SO: se SO esta desacelerando (queda progressiva
    semana a semana), destacar como CAUSA-RAIZ de overstock. Exemplo:
    "SO piorou de -8% para -16% nas ultimas semanas -- desaceleracao
    explica o acumulo de estoque."
-5. DESVIO PERSISTENTE: se um SKU apresenta desvio no mesmo sinal
+6. DESVIO PERSISTENTE: se um SKU apresenta desvio no mesmo sinal
    por 3+ meses consecutivos, classificar como problema ESTRUTURAL
    (nao pontual). Exemplo: "desvio de -17% se repete ha 4 meses --
    premissa de baseline precisa ser revisada."
-6. Liste as proposicoes mais urgentes (maior impacto financeiro).
-7. Se houver DOI fora da politica (gap > 7d), distinga:
+7. Liste as proposicoes mais urgentes (maior impacto financeiro).
+8. Se houver DOI fora da politica (gap > 7d), distinga:
    - DOI alto + SO desacelerando -> SEGURAR sell-in (causa-raiz: queda SO)
    - DOI alto + tendencia piorando -> SEGURAR sell-in (critico)
-   - DOI alto + tendencia melhorando -> monitorar, sem acao urgente
-   - DOI baixo + SO subindo -> RUPTURA (oportunidade so com DOI saudavel)
-8. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
-9. NAO invente numeros. Use apenas os dados fornecidos no contexto.
+   - DOI alto + tendencia melhorando ou estavel com SO perto do plano
+     -> monitorar (sem acao urgente no resumo)
+   - DOI baixo + SO subindo -> RUPTURA (risco primario)
+   - DOI baixo + SO subindo + plano forward subdimensionado -> RUPTURA
+     e tambem OPORTUNIDADE dual (subir SI); cite ambos se estiverem no
+     RESUMO EXECUTIVO
+9. No RESUMO EXECUTIVO, respeite os blocos DOI / forward / oportunidades
+   e as polaridades (ruptura vs overstock) ja calculadas; nao misture
+   ranking nem invente posicoes.
+10. Seja objetivo: paragrafos curtos e bullets quando fizer sentido.
+11. NAO invente numeros. Use apenas os dados fornecidos no contexto.
 """
 
 
