@@ -53,7 +53,8 @@ Estas regras nao podem ser quebradas sem mudanca previa de arquitetura.
 | `validacao`        | `ResultadoValidacao   | None`               | Validador              | Nexus                                      | Sim, por tentativa |                 |
 | `critica`          | `ResultadoCritica     | None`               | Critic                 | Nexus                                      | Sim, por tentativa |                 |
 | `fila_nexus`       | `list[ItemFilaNexus]` | Nexus/Guardrails    | UI/main                | Sim, ao final da execucao                  |                    |                 |
-| `resumo_executivo` | `dict`                | Nexus/Optimus       | UI/main/LLM contexto   | Sim, ao final apos fila                    |                    |                 |
+| `resumo_executivo` | `dict`                | Nexus/Optimus       | UI/main/LLM/visualizacao | Sim, ao final apos fila                  |                    |                 |
+| `artefatos_visuais`| `list[dict]`          | Nexus/visualizacao  | UI/main/Auditoria      | Append-only (paths PNG do run)             |                    |                 |
 | `acoes_executadas` | `list[str]`           | Harness             | Harness/Auditoria      | Append-only                                |                    |                 |
 | `handoffs`         | `list[Handoff]`       | Nexus               | Auditoria              | Append-only                                |                    |                 |
 | `auditoria`        | `AuditTrail           | dict                | None`                  | Audit/Harness/Nexus                        | main.py/UI         | Sim, por sessao |
@@ -384,6 +385,26 @@ Regras:
 * LLM so cita; nao recalcula ranking.
 * Dual framing: oportunidade com DOI critico coexiste com ruptura.
 
+### 5.10 `artefatos_visuais`
+
+Lista de metadados de arquivos graficos gerados no run (MVP: PNG do
+resumo executivo).
+
+Cada item tipicamente:
+
+```text
+tipo            -- ex.: resumo_executivo_png
+caminho         -- path relativo ou absoluto do arquivo
+sessao_id       -- id da sessao
+n_doi / n_forward / n_oportunidades  -- tamanhos plotados
+```
+
+Regras:
+
+* Derivado apenas de `resumo_executivo` (nao recalcula ranking).
+* Nao substitui `fila_nexus` nem o disclaimer textual (ADR-0014).
+* PNGs em `output/` nao devem ser commitados (gitignore).
+
 ---
 
 ## 6. Responsabilidade por campo
@@ -396,6 +417,7 @@ Pode escrever:
 pergunta
 fila_nexus
 resumo_executivo
+artefatos_visuais
 handoffs
 auditoria
 ```

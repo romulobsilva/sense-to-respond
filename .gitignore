@@ -10,6 +10,8 @@ __pycache__/
 # Saidas locais de execucao
 auditoria/*.json
 approvals/*.json
+output/*.png
+output/*.svg
 
 # Metadados Windows
 *:Zone.Identifier

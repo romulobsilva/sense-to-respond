@@ -6,6 +6,38 @@
 
 ---
 
+## Sessao 18 - 2026-07-20 - Export PNG do resumo executivo (1.6.6)
+
+### Contexto
+- Usuario pediu visualizacao automatica do top N priorizado
+- Decisao: MVP PNG deterministico (sem Canvas, sem LLM na plotagem)
+- Input = `resumo_executivo` (varia com N e CSV)
+
+### Decisoes
+- `visualizacao.plotar_resumo_executivo` data-driven (3 blocos barras)
+- Nexus chama apos montar resumo; state `artefatos_visuais` + auditoria
+  `visualizacao_png`
+- Escolha de tool pelo agente fica para fase futura
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `visualizacao.py` | novo modulo matplotlib Agg |
+| `nexus.py` / `state_types.py` / `main.py` | wire + print path |
+| `tests/test_visualizacao.py` | 5 testes |
+| `requirements.txt` / `.gitignore` | matplotlib; ignore output/*.png |
+| docs + rules + LaTeX | planning 1.6.6, architecture, contracts, testing, auditoria |
+
+### Testes
+- `pytest tests/test_visualizacao.py`: OK (5 passed)
+- Smoke: `output/recomendacoes_smoke-viz.png` gerado
+
+### Proximos passos
+- Opcional: multiplas tools de plot + escolha pelo agente
+- Canvas/HTML a partir do mesmo schema
+
+---
+
 ## Sessao 1 - 2026-06-25 (tarde) - Arquitetura inicial
 
 ### Contexto

@@ -847,6 +847,18 @@ state.resumo_executivo gravado na auditoria (inclui diversidade_*)
 Fixture temporal: Belvita em top_doi e/ou top_forward; dual framing testado
 ```
 
+### 13c.3d Export PNG do resumo executivo
+
+```text
+plotar_resumo_executivo(resumo) -> output/recomendacoes_<sessao_id>.png
+Barras / secoes refletem len(top_doi|top_forward|top_oportunidades)
+N=3 vs N=5 muda quantidade de itens no grafico (mesmo contrato de campos)
+Sem SKU/marca hardcoded no codigo de plotagem
+Evento auditoria visualizacao_png com caminho e contagens
+state.artefatos_visuais contem o path do PNG
+LLM nao e chamado na geracao do PNG
+```
+
 ### 13c.4 Schema configuravel
 
 ```text

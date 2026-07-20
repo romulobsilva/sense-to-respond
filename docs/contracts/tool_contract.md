@@ -86,6 +86,7 @@ validar_custos
 gerar_perfil_dataframe
 normalizar_dataset
 analisar_desvio_plano
+plotar_resumo_executivo
 ```
 
 Regras:
@@ -135,6 +136,7 @@ ler_arquivo_xlsx
 salvar_template_mapeamento
 carregar_template_mapeamento
 salvar_auditoria_json
+plotar_resumo_executivo
 ```
 
 Regras:
@@ -145,6 +147,9 @@ Regras:
 * Nao gravar segredo.
 * Nao gravar dados reais completos em diretorios de exemplo ou docs.
 * Registrar operacao em auditoria quando fizer parte do pipeline.
+* `plotar_resumo_executivo` e deterministic_tool + io_tool: le apenas
+  `resumo_executivo`, grava PNG em `output/`, nao chama LLM, nao
+  recalcula impactos nem ordem do ranking.
 
 ---
 

@@ -2,7 +2,8 @@
 Nexus: orquestrador MVP com state compartilhado, validador, critic e fila.
 
 Pipeline: DataShield (opcional) -> Dominion -> Sinais -> Optimus ->
-          Validador -> Critic -> Fila -> Output Guardrail -> HITL
+          Validador -> Critic -> Fila -> Resumo executivo -> PNG ->
+          Output Guardrail -> HITL
 """
 
 from dataclasses import dataclass, field
@@ -45,6 +46,7 @@ from state_types import (
     sinais_do_state,
 )
 from tools import serializar_resultados_para_llm
+from visualizacao import plotar_resumo_executivo
 from tools_parametrizadas import (
     analisar_desvio_persistente,
     analisar_doi,
@@ -72,6 +74,7 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
     "optimus_retry",
     "fila_nexus",
     "resumo_executivo",
+    "visualizacao_png",
     "output_guardrail",
     "sessao_fim",
     "input_guardrail_blocked",
@@ -807,6 +810,27 @@ class Nexus:
         self._log(texto_resumo)
         if auditoria is not None:
             auditoria.registrar("resumo_executivo", resumo_exec)
+
+        sessao_id_viz = "sessao"
+        if auditoria is not None:
+            sessao_id_viz = auditoria.sessao_id
+        meta_viz = plotar_resumo_executivo(
+            resumo_exec,
+            sessao_id=sessao_id_viz,
+        )
+        artefatos = state.get("artefatos_visuais")
+        if not isinstance(artefatos, list):
+            artefatos = []
+            state["artefatos_visuais"] = artefatos
+        artefatos.append(meta_viz)
+        if meta_viz.get("ok"):
+            self._log(f"PNG resumo executivo: {meta_viz.get('caminho')}")
+        else:
+            self._log(
+                f"Falha ao gerar PNG do resumo: {meta_viz.get('erro')}"
+            )
+        if auditoria is not None:
+            auditoria.registrar("visualizacao_png", meta_viz)
 
         resumo_compacto = self._montar_resumo_compacto_critic(state)
         if resumo_compacto is not None:

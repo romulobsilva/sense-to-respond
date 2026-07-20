@@ -20,6 +20,13 @@ IA = LLM + Harness
 - O LLM pode gerar scripts de ETL (rename, groupby, merge) mas nao scripts de metricas (ADR-0021).
 - O humano decide antes de qualquer acao operacional (HITL obrigatorio).
 
+**Diagramas (camadas de detalhe):**
+| Nivel | Arquivo | Uso |
+|---|---|---|
+| Pitch | `docs/diagrams/00_apresentacao_macro.mmd` | Slide 1 - ideia em 10s |
+| Meio-termo | `docs/diagrams/02_apresentacao_meio_termo.mmd` | Slide EY - agentes + HITL |
+| Tecnico | `docs/diagrams/04_arquitetura_macro.mmd` | Deep-dive engenharia |
+
 ## 2. Componentes do MVP
 
 | Componente | Arquivo(s) | Papel |
@@ -32,6 +39,7 @@ IA = LLM + Harness
 | **State** | `state_types.py` | Blackboard compartilhado entre agentes |
 | **Guardrails** | `guardrails.py` | Input/output guardrails, fila com flags |
 | **Auditoria** | `audit.py` | Trilha de eventos timestamped |
+| **Visualizacao** | `visualizacao.py` | PNG deterministico do resumo executivo (top N) |
 | **Config** | `config.py`, `.env` | Parametros (modelo, limiar, retries) |
 | **HITL** | `hitl.py` | Protocolo abstrato de aprovacao humana (ADR-0022) |
 | **DataShield** | `datashield.py` | Leitura, mapeamento semantico, ETL, normalizacao |
@@ -86,6 +94,13 @@ Fila Nexus (ranqueada por impacto R$ e urgencia horas)
   |-- HITL: aprovacao via Streamlit ou terminal (ADR-0022)
   |
   v
+Resumo executivo estratificado (top N DOI / forward / oportunidades)
+  |
+  v
+Visualizacao PNG (deterministica; plota o top N do run)
+  |-- output/recomendacoes_<sessao_id>.png
+  |
+  v
 Output Guardrail (disclaimer + citacoes)
   |
   v
@@ -121,6 +136,7 @@ Sem conversa livre entre LLMs.
 | `validacao` | Validador | Nexus |
 | `critica` | Critic | Nexus, Fila |
 | `fila_nexus[]` | Guardrails | main.py (CLI), Streamlit |
+| `artefatos_visuais[]` | Nexus/visualizacao | main.py, Auditoria |
 | `handoffs[]` | Nexus | Auditoria |
 | `auditoria` | Audit | main.py (JSON) |
 
@@ -244,6 +260,12 @@ Filtro persistente: nao gera proposicao se
 
 Saida em `state.resumo_executivo` (`top_doi`, `top_forward`,
 `top_oportunidades`, com sublistas de polaridade quando aplicavel).
+
+Apos o resumo, `visualizacao.plotar_resumo_executivo` gera PNG em
+`output/recomendacoes_<sessao_id>.png` a partir das listas top N do run
+(tamanho e conteudo variam com N e com o CSV de entrada). Nao usa LLM;
+nao recalcula impacto nem ordem. Path registrado em
+`state.artefatos_visuais` e na auditoria (`visualizacao_png`).
 
 ### 7.3 Portabilidade multi-dominio (ADR-0024)
 

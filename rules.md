@@ -454,9 +454,16 @@ Eventos esperados:
 * validacao_deterministica;
 * critic_auditoria;
 * fila_nexus;
+* resumo_executivo;
+* visualizacao_png (path do PNG do top N em output/);
 * output_guardrail;
 * user_decision, quando houver UI;
 * sessao_fim.
+
+Artefatos graficos em `output/` sao permitidos como apresentacao do
+`resumo_executivo`. O PNG nao substitui disclaimer, evidencias nem HITL
+(ADR-0014). A plotagem e deterministica e nao usa LLM para recalcular
+ranking ou impactos.
 
 Auditoria nao deve conter:
 

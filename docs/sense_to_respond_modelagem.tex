@@ -2192,6 +2192,21 @@ NR alto de DOI n\~ao remove alertas forward do quadro.
   \texttt{diversidade\_doi} / \texttt{diversidade\_forward}).
 \end{definicao}
 
+\begin{definicao}[Export PNG do Resumo Executivo]
+  Seja $R = \state.\texttt{resumo\_executivo}$. A fun\c{c}\~ao
+  determin\'istica \texttt{plotar\_resumo\_executivo}$(R)$ gera
+  \[
+    \texttt{output/recomendacoes\_}\langle\texttt{sessao\_id}\rangle\texttt{.png}
+  \]
+  com tr\^es blocos horizontais (\texttt{top\_doi}, \texttt{top\_forward},
+  \texttt{top\_oportunidades}), plotando exatamente os itens presentes
+  (tamanho e conte\'udo variam com $N$ e com o CSV de entrada).
+  N\~ao chama LLM; n\~ao recalcula $I^{\text{prio}}$ nem a ordem.
+  Metadados v\~ao para $\state.\texttt{artefatos\_visuais}$ e auditoria
+  (\texttt{visualizacao\_png}). O PNG n\~ao substitui fila HITL nem
+  disclaimer (ADR-0014).
+\end{definicao}
+
 \begin{definicao}[Filtro de Ru\'ido Persistente]
   Um sinal \texttt{desvio\_persistente} s\'o gera proposi\c{c}\~ao se
   \[

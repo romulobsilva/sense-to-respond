@@ -394,6 +394,28 @@ ou ScenarioTag.
 - [x] Top DOI inclui ruptura e overstock quando ambos existem
 - [x] Nenhuma regra por ScenarioTag / nome de marca
 
+### 1.6.6 Export PNG do resumo executivo (visualizacao deterministica)
+Gera imagem estatica a partir de `state.resumo_executivo` (top N por
+topico). Nao recalcula ranking; so plota a lista ja priorizada.
+MVP: sempre a mesma funcao (sem escolha de tool pelo LLM).
+
+**Spec:**
+- [x] `visualizacao.py`: `plotar_resumo_executivo(resumo, caminho, sessao_id)`
+- [x] Input: listas `top_doi` / `top_forward` / `top_oportunidades` (tamanho = N do run)
+- [x] Output: `output/recomendacoes_<sessao_id>.png` (dir criado se ausente)
+- [x] Nexus chama apos montar `resumo_executivo`; grava path em `artefatos_visuais`
+- [x] Auditoria: evento `visualizacao_png` (path, contagens, sem dump sensivel)
+- [x] Dependencia: `matplotlib` no `requirements.txt`
+- [x] Testes sinteticos: N muda numero de barras; sem SKU hardcoded na plotagem
+- [x] Sync architecture, contracts, testing, auditoria doc, rules, LaTeX, agent.log
+
+**Criterios de aceite:**
+- [x] Run com resumo nao vazio produz PNG em `output/`
+- [x] Alterar N (CLI/thresholds) muda o conteudo do grafico sem alterar R$ das props
+- [x] Outro CSV / outra lista top N muda o PNG (data-driven)
+- [x] PNG nao substitui fila HITL nem disclaimer (ADR-0014)
+- [x] LLM nao participa da geracao do PNG
+
 ### 1.6.1 Analises temporais e comparativas
 Em `tools_parametrizadas.py` (mesmo arquivo da 1.5b):
 - [ ] `analisar_tendencia(df, mapa, janela=4) -> dict` -- tendencia por SKU nas ultimas N semanas

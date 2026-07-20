@@ -243,6 +243,14 @@ def main() -> None:
     if isinstance(resumo_exec, dict):
         print("\n" + formatar_resumo_executivo_texto(resumo_exec))
 
+    artefatos = resultado.get("artefatos_visuais")
+    if isinstance(artefatos, list) and artefatos:
+        print("\nArtefatos visuais:")
+        for art in artefatos:
+            if isinstance(art, dict):
+                status = "ok" if art.get("ok") else "erro"
+                print(f"  [{status}] {art.get('caminho')}")
+
     fila = resultado.get("fila_nexus", [])
     if isinstance(fila, list):
         _imprimir_fila_nexus(fila)

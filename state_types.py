@@ -136,6 +136,7 @@ def criar_state_inicial(pergunta: str) -> Dict[str, Any]:
         "critica": None,
         "fila_nexus": [],
         "resumo_executivo": None,
+        "artefatos_visuais": [],
         "optimus_tentativas": 0,
         "handoffs": [],
         "dataset_csv": None,
