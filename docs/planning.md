@@ -416,6 +416,33 @@ MVP: sempre a mesma funcao (sem escolha de tool pelo LLM).
 - [x] PNG nao substitui fila HITL nem disclaimer (ADR-0014)
 - [x] LLM nao participa da geracao do PNG
 
+### 1.6.7 Relatorio analista HTML -> PDF (WeasyPrint)
+Relatorio completo para o analista S&OE: priorizacao, grafico top N,
+interpretacao por bloco, narrativa LLM (ja gerada), fila/HITL e disclaimer.
+Artefatos em `output/`. Ranking permanece deterministico.
+
+**Spec:**
+- [x] `relatorio.py`: monta HTML + exporta PDF via WeasyPrint
+- [x] Inputs: `resumo_executivo`, path PNG, explicacao (pos-guardrail),
+  metadados (sessao, fila, critic, arquivo entrada)
+- [x] Outputs: `output/relatorio_<sessao_id>.html` e `.pdf`
+- [x] Secoes: cabecalho, sumario, tabelas top N, grafico, leitura por bloco,
+  analise narrativa, HITL/disclaimer
+- [x] Interpretacao por bloco: texto deterministico a partir dos itens;
+  narrativa longa = LLM ja existente (nao recalcula ranking)
+- [x] Nexus chama apos output guardrail; `artefatos_visuais` + auditoria
+  `relatorio_pdf`
+- [x] Fallback: se PDF falhar, HTML ainda e gravado; erro seguro na auditoria
+- [x] `weasyprint` no requirements; gitignore `output/*.pdf` e `*.html`
+- [x] Testes sinteticos (HTML secoes; PDF quando WeasyPrint disponivel)
+- [x] Sync architecture, contracts, prompts, testing, auditoria, rules, LaTeX, agent.log
+
+**Criterios de aceite:**
+- [x] Run Nexus produz PDF (ou HTML+erro PDF) em `output/`
+- [x] Numeros/tabelas batem com `resumo_executivo` do mesmo run
+- [x] Relatorio inclui disclaimer e nao afirma execucao automatica (ADR-0014)
+- [x] LLM nao reordena top N no relatorio
+
 ### 1.6.1 Analises temporais e comparativas
 Em `tools_parametrizadas.py` (mesmo arquivo da 1.5b):
 - [ ] `analisar_tendencia(df, mapa, janela=4) -> dict` -- tendencia por SKU nas ultimas N semanas

@@ -457,13 +457,15 @@ Eventos esperados:
 * resumo_executivo;
 * visualizacao_png (path do PNG do top N em output/);
 * output_guardrail;
+* relatorio_pdf (HTML/PDF do analista em output/);
 * user_decision, quando houver UI;
 * sessao_fim.
 
-Artefatos graficos em `output/` sao permitidos como apresentacao do
-`resumo_executivo`. O PNG nao substitui disclaimer, evidencias nem HITL
-(ADR-0014). A plotagem e deterministica e nao usa LLM para recalcular
-ranking ou impactos.
+Artefatos em `output/` (PNG, HTML, PDF) sao permitidos como apresentacao
+do `resumo_executivo` e da explicacao pos-guardrail. Nao substituem
+disclaimer, evidencias nem HITL (ADR-0014). Plotagem e montagem do
+relatorio sao deterministicas quanto a numeros/ranking; o LLM so
+fornece narrativa ja gerada, sem recalcular impactos.
 
 Auditoria nao deve conter:
 

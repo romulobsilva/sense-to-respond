@@ -245,11 +245,17 @@ def main() -> None:
 
     artefatos = resultado.get("artefatos_visuais")
     if isinstance(artefatos, list) and artefatos:
-        print("\nArtefatos visuais:")
+        print("\nArtefatos visuais / relatorio:")
         for art in artefatos:
             if isinstance(art, dict):
+                tipo = art.get("tipo", "artefato")
+                if art.get("html_ok") and art.get("caminho_html"):
+                    print(f"  [html] {art.get('caminho_html')}")
                 status = "ok" if art.get("ok") else "erro"
-                print(f"  [{status}] {art.get('caminho')}")
+                caminho = art.get("caminho") or art.get("caminho_pdf")
+                print(f"  [{status}] {tipo}: {caminho}")
+                if art.get("erro"):
+                    print(f"         erro: {art.get('erro')}")
 
     fila = resultado.get("fila_nexus", [])
     if isinstance(fila, list):

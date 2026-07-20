@@ -3,7 +3,7 @@ Nexus: orquestrador MVP com state compartilhado, validador, critic e fila.
 
 Pipeline: DataShield (opcional) -> Dominion -> Sinais -> Optimus ->
           Validador -> Critic -> Fila -> Resumo executivo -> PNG ->
-          Output Guardrail -> HITL
+          Output Guardrail -> Relatorio PDF -> HITL
 """
 
 from dataclasses import dataclass, field
@@ -46,6 +46,7 @@ from state_types import (
     sinais_do_state,
 )
 from tools import serializar_resultados_para_llm
+from relatorio import gerar_relatorio_analista
 from visualizacao import plotar_resumo_executivo
 from tools_parametrizadas import (
     analisar_desvio_persistente,
@@ -76,6 +77,7 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
     "resumo_executivo",
     "visualizacao_png",
     "output_guardrail",
+    "relatorio_pdf",
     "sessao_fim",
     "input_guardrail_blocked",
 })
@@ -881,6 +883,44 @@ class Nexus:
                     "limiar": self.settings.limiar_confianca_critic,
                 },
             )
+
+        fila_state = state.get("fila_nexus")
+        total_fila = len(fila_state) if isinstance(fila_state, list) else 0
+        revisao_ob = 0
+        if isinstance(fila_state, list):
+            for item_fila in fila_state:
+                if isinstance(item_fila, dict) and item_fila.get(
+                    "revisao_obrigatoria"
+                ):
+                    revisao_ob += 1
+        critic_aprovado: Optional[bool] = None
+        if isinstance(critica_raw, dict) and "aprovado" in critica_raw:
+            critic_aprovado = bool(critica_raw.get("aprovado"))
+        caminho_png = None
+        if isinstance(meta_viz, dict) and meta_viz.get("ok"):
+            caminho_png = meta_viz.get("caminho")
+        meta_rel = gerar_relatorio_analista(
+            resumo_exec,
+            sessao_id=sessao_id_viz,
+            explicacao=texto_final,
+            caminho_png=caminho_png if isinstance(caminho_png, str) else None,
+            arquivo_entrada=self.arquivo_entrada,
+            total_fila=total_fila,
+            revisao_obrigatoria=revisao_ob,
+            confianca_critic=confianca,
+            critic_aprovado=critic_aprovado,
+        )
+        artefatos.append(meta_rel)
+        if meta_rel.get("html_ok"):
+            self._log(f"Relatorio HTML: {meta_rel.get('caminho_html')}")
+        if meta_rel.get("ok"):
+            self._log(f"Relatorio PDF: {meta_rel.get('caminho')}")
+        else:
+            self._log(
+                f"Falha PDF do relatorio: {meta_rel.get('erro')}"
+            )
+        if auditoria is not None:
+            auditoria.registrar("relatorio_pdf", meta_rel)
             auditoria.registrar(
                 "sessao_fim",
                 {

@@ -6,6 +6,33 @@
 
 ---
 
+## Sessao 19 - 2026-07-20 - Relatorio analista HTML->PDF (1.6.7)
+
+### Contexto
+- Apos PNG top N, usuario pediu relatorio completo para analista
+- Decisao: HTML template + WeasyPrint PDF em `output/`
+
+### Decisoes
+- Ranking/tabelas so de `resumo_executivo`
+- Leitura por bloco deterministica; narrativa = explicacao pos-guardrail
+- Sem segundo call LLM; fallback HTML se PDF falhar
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `relatorio.py` | HTML+PDF WeasyPrint |
+| `nexus.py` / `main.py` | wire apos guardrail |
+| `tests/test_relatorio.py` | secoes HTML + PDF |
+| docs + requirements + gitignore | 1.6.7 sync |
+
+### Testes
+- `pytest tests/test_relatorio.py` (+ visualizacao)
+
+### Proximos passos
+- Enriquecer secoes com mais charts (tendencia/forward) se necessario
+
+---
+
 ## Sessao 18 - 2026-07-20 - Export PNG do resumo executivo (1.6.6)
 
 ### Contexto

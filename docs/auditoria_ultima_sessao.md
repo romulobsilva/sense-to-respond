@@ -68,6 +68,7 @@ resumo_executivo
 visualizacao_png
 llm_explicacao
 output_guardrail
+relatorio_pdf
 sessao_fim
 ```
 
@@ -255,7 +256,20 @@ Guardrail de saida (disclaimer / limiar de confianca).
 | `confianca_critic` | Confianca do Critic usada no gate |
 | `limiar` | Limiar minimo configurado |
 
-### 4.12 `sessao_fim`
+### 4.12 `relatorio_pdf`
+
+Relatorio analista HTML->PDF (WeasyPrint).
+
+| Chave em `dados` | Significado |
+|------------------|-------------|
+| `ok` | Se o PDF foi gerado |
+| `html_ok` | Se o HTML intermediario foi gravado |
+| `caminho` / `caminho_pdf` | Path do PDF |
+| `caminho_html` | Path do HTML |
+| `sessao_id` | ID da sessao |
+| `erro` | Mensagem segura se PDF/HTML falhou |
+
+### 4.13 `sessao_fim`
 
 Encerramento da sessao.
 
@@ -346,6 +360,7 @@ Checklist rapido de saude:
 | Critic OK? | `critic_auditoria.aprovado` / `confianca` |
 | O que priorizar? | `resumo_executivo.top_*` |
 | PNG do top N? | `visualizacao_png.caminho` / `artefatos_visuais` |
+| Relatorio PDF? | `relatorio_pdf.caminho` / `artefatos_visuais` |
 | O que o LLM disse? | `llm_explicacao.resposta_completa` |
 | Sessao fechou bem? | `sessao_fim.sucesso` |
 
