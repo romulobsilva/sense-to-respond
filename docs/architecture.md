@@ -40,7 +40,6 @@ IA = LLM + Harness
 | **Guardrails** | `guardrails.py` | Input/output guardrails, fila com flags |
 | **Auditoria** | `audit.py` | Trilha de eventos timestamped |
 | **Visualizacao** | `visualizacao.py` | PNG deterministico do resumo executivo (top N) |
-| **Relatorio** | `relatorio.py` | HTML+PDF do analista (WeasyPrint) em `output/` |
 | **Config** | `config.py`, `.env` | Parametros (modelo, limiar, retries) |
 | **HITL** | `hitl.py` | Protocolo abstrato de aprovacao humana (ADR-0022) |
 | **DataShield** | `datashield.py` | Leitura, mapeamento semantico, ETL, normalizacao |
@@ -105,11 +104,6 @@ Visualizacao PNG (deterministica; plota o top N do run)
 Output Guardrail (disclaimer + citacoes)
   |
   v
-Relatorio analista HTML -> PDF (WeasyPrint)
-  |-- output/relatorio_<sessao_id>.html
-  |-- output/relatorio_<sessao_id>.pdf
-  |
-  v
 Usuario decide (sem Bridge/ERP no MVP)
 ```
 
@@ -142,7 +136,7 @@ Sem conversa livre entre LLMs.
 | `validacao` | Validador | Nexus |
 | `critica` | Critic | Nexus, Fila |
 | `fila_nexus[]` | Guardrails | main.py (CLI), Streamlit |
-| `artefatos_visuais[]` | Nexus/visualizacao/relatorio | main.py, Auditoria |
+| `artefatos_visuais[]` | Nexus/visualizacao | main.py, Auditoria |
 | `handoffs[]` | Nexus | Auditoria |
 | `auditoria` | Audit | main.py (JSON) |
 
@@ -272,12 +266,6 @@ Apos o resumo, `visualizacao.plotar_resumo_executivo` gera PNG em
 (tamanho e conteudo variam com N e com o CSV de entrada). Nao usa LLM;
 nao recalcula impacto nem ordem. Path registrado em
 `state.artefatos_visuais` e na auditoria (`visualizacao_png`).
-
-Apos o output guardrail, `relatorio.gerar_relatorio_analista` monta HTML
-com tabelas do top N, PNG embutido, leitura deterministica por bloco e
-narrativa LLM (pos-disclaimer). Exporta PDF via WeasyPrint para
-`output/relatorio_<sessao_id>.pdf`. Se o PDF falhar, o HTML permanece;
-evento `relatorio_pdf` registra ok/erro. Nao recalcula ranking.
 
 ### 7.3 Portabilidade multi-dominio (ADR-0024)
 

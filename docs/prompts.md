@@ -400,21 +400,6 @@ flag de confianca/revisao
 
 ---
 
-### 6.6b Reuso no relatorio PDF (fase 1.6.7)
-
-O texto pos-guardrail e embutido no relatorio HTML/PDF como secao
-"Analise narrativa". Nao ha segundo prompt LLM para o PDF no MVP.
-
-Regras:
-
-```text
-tabelas e ranking do PDF vêm so de resumo_executivo
-leitura por bloco do PDF e texto deterministico (contagens/polaridade)
-narrativa longa = explicacao ja gerada (citacao, sem reordenar top N)
-```
-
----
-
 ### 6.7 Testes minimos
 
 Testar:

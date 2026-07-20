@@ -12,8 +12,6 @@ auditoria/*.json
 approvals/*.json
 output/*.png
 output/*.svg
-output/*.pdf
-output/*.html
 
 # Metadados Windows
 *:Zone.Identifier

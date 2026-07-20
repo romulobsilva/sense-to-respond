@@ -859,18 +859,6 @@ state.artefatos_visuais contem o path do PNG
 LLM nao e chamado na geracao do PNG
 ```
 
-### 13c.3e Relatorio analista HTML -> PDF
-
-```text
-gerar_relatorio_analista(...) -> output/relatorio_<sessao_id>.html|.pdf
-HTML contem secoes: cabecalho, tabelas top N, grafico, leitura por bloco,
-  analise narrativa, HITL/disclaimer
-Numeros das tabelas == resumo_executivo do mesmo input
-PDF gerado quando WeasyPrint disponivel; senao html_ok e pdf ok=False
-Evento auditoria relatorio_pdf com caminhos
-LLM nao reordena top N; narrativa e citacao da explicacao pos-guardrail
-```
-
 ### 13c.4 Schema configuravel
 
 ```text
