@@ -87,6 +87,7 @@ gerar_perfil_dataframe
 normalizar_dataset
 analisar_desvio_plano
 plotar_resumo_executivo
+gerar_relatorio_analista
 ```
 
 Regras:
@@ -95,6 +96,9 @@ Regras:
 * Nao pode chamar LLM.
 * Deve ser testavel sem API externa.
 * Deve ter resultado reproduzivel para mesma entrada.
+* `gerar_relatorio_analista` monta HTML/PDF a partir de dados ja
+  calculados; pode embutir texto LLM ja gerado, mas nao chama LLM
+  nem recalcula impactos/ranking.
 
 ---
 
@@ -137,6 +141,7 @@ salvar_template_mapeamento
 carregar_template_mapeamento
 salvar_auditoria_json
 plotar_resumo_executivo
+gerar_relatorio_analista
 ```
 
 Regras:
@@ -150,6 +155,8 @@ Regras:
 * `plotar_resumo_executivo` e deterministic_tool + io_tool: le apenas
   `resumo_executivo`, grava PNG em `output/`, nao chama LLM, nao
   recalcula impactos nem ordem do ranking.
+* `gerar_relatorio_analista` grava HTML+PDF em `output/`; PDF via
+  WeasyPrint; se PDF falhar, HTML deve permanecer.
 
 ---
 

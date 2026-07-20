@@ -1,0 +1,38 @@
+---
+description: Agent analisa git e sugere commit; humano executa commit/push
+alwaysApply: true
+---
+
+# Git: analise pelo agente, commit/push pelo humano
+
+## Papel do agente
+Quando houver mudancas locais ou o usuario perguntar sobre git/commit/push:
+
+1. **Analisar** com `git status`, `git diff` (staged/unstaged) e `git log` recente.
+2. **Informar** o que mudou (arquivos e por que), em linguagem clara.
+3. **Avaliar** o que deve / nao deve ir ao repositorio (ver checklist abaixo).
+4. **Sugerir** mensagem(ns) de commit no estilo do repo (`feat:` / `fix:` / `docs:`),
+   contando a historia das modificacoes (por que, nao so a lista de arquivos).
+5. **Passar comandos** prontos (`git add` seletivo, `git commit` com HEREDOC, `git push`)
+   para o usuario colar no terminal.
+
+## Proibido ao agente
+- Executar `git commit`, `git push`, `git commit --amend`, ou force push.
+- Usar `git add -A` / `git add .` sem listar arquivos explicitamente na sugestao.
+- Incluir segredos ou artefatos sensiveis na sugestao de stage.
+
+## Checklist: incluir vs excluir
+**Incluir (em geral):** codigo da feature, testes, docs/contracts/planning/architecture,
+`rules.md`, `.cursor/rules` relevantes, `requirements.txt` / `.gitignore` da feature.
+
+**Excluir (em geral):** `.env`, chaves/API, `.cursor/mcp.json` com auth,
+`auditoria/*.json` com dados de sessao, `output/*` (png/pdf/html),
+lixo LaTeX (`.aux` `.log` `.toc` `.out`), dumps de cliente, PII.
+
+Se houver duvida se um arquivo deve ir: **perguntar** ao usuario antes de sugerir o `git add`.
+
+## Formato da resposta ao usuario
+1. Resumo das mudancas e recomendacao (commitar / separar em N commits / nao commitar X).
+2. Mensagem de commit sugerida (titulo + corpo curto com a historia).
+3. Bloco de comandos copiaveis (add seletivo + commit HEREDOC + push).
+4. Lembrete: o usuario executa no terminal; o agente nao executa commit/push.

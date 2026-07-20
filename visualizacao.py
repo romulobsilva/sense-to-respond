@@ -15,6 +15,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+# Fonte com suporte a acentos PT-BR no PNG.
+plt.rcParams["font.family"] = "DejaVu Sans"
+
 DIR_OUTPUT_DEFAULT = "output"
 NOME_ARQUIVO_PADRAO = "recomendacoes_{sessao_id}.png"
 
@@ -193,7 +196,7 @@ def plotar_resumo_executivo(
             constrained_layout=True,
         )
         fig.suptitle(
-            f"Resumo executivo top N | sessao={sessao_id}",
+            f"Resumo executivo top N | sess\u00e3o={sessao_id}",
             fontsize=12,
         )
 

@@ -41,6 +41,11 @@ Before code changes, read:
 - Tools must be deterministic and audited.
 - LLM calls must use structured JSON, validation, retry, and safe fallback.
 
+## Git (ver tambem git-human-commit.mdc)
+- Agent may analyze diffs and advise what should go to the repo.
+- Suggest commit message (story of the change) and copy-paste commands.
+- Do NOT run `git commit` or `git push`; the human executes them in the terminal.
+
 ## Stop and ask
 Ask before:
 - changing state/tool/proposition contracts;

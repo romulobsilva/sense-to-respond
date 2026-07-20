@@ -457,13 +457,15 @@ Eventos esperados:
 * resumo_executivo;
 * visualizacao_png (path do PNG do top N em output/);
 * output_guardrail;
+* relatorio_pdf (HTML/PDF do analista em output/);
 * user_decision, quando houver UI;
 * sessao_fim.
 
-Artefatos graficos em `output/` sao permitidos como apresentacao do
-`resumo_executivo`. O PNG nao substitui disclaimer, evidencias nem HITL
-(ADR-0014). A plotagem e deterministica e nao usa LLM para recalcular
-ranking ou impactos.
+Artefatos em `output/` (PNG, HTML, PDF) sao permitidos como apresentacao
+do `resumo_executivo` e da explicacao pos-guardrail. Nao substituem
+disclaimer, evidencias nem HITL (ADR-0014). Plotagem e montagem do
+relatorio sao deterministicas quanto a numeros/ranking; o LLM so
+fornece narrativa ja gerada, sem recalcular impactos.
 
 Auditoria nao deve conter:
 
@@ -509,7 +511,44 @@ Se uma implementacao ficar parcial, o agente deve:
 
 ---
 
-## 16. Limite de escopo por sessao
+## 16. Git: analise pelo agente, commit/push pelo humano
+
+Os agentes **podem e devem** analisar o que poderia ou deveria ir ao
+repositorio Git, para informar o usuario. A **execucao** de `git commit`
+e `git push` e sempre do humano no terminal.
+
+### 16.1 O que o agente deve fazer
+
+1. Inspecionar mudancas (`git status`, `git diff`, `git log` recente).
+2. Explicar o que foi alterado e o impacto.
+3. Avaliar o que incluir ou excluir do commit.
+4. Sugerir mensagem de commit organizada, no estilo do repo
+   (`feat:` / `fix:` / `docs:`), contando a historia das modificacoes.
+5. Entregar comandos prontos (`git add` seletivo, `git commit` com
+   HEREDOC, `git push`) para o usuario colar e executar.
+
+### 16.2 O que o agente nao deve fazer
+
+* Executar `git commit`, `git push`, `git commit --amend` ou force push.
+* Sugerir `git add -A` / `git add .` sem listar arquivos explicitamente.
+* Incluir na sugestao de stage: `.env`, chaves/API, `.cursor/mcp.json`
+  com credenciais, `auditoria/*.json` de sessao, `output/*` (png/pdf/html),
+  lixo LaTeX (`.aux` `.log` `.toc` `.out`), dados de cliente ou PII.
+
+Em duvida sobre um arquivo: perguntar ao usuario antes de sugerir o stage.
+
+### 16.3 Formato da entrega ao usuario
+
+1. Resumo das mudancas + recomendacao.
+2. Texto da mensagem de commit sugerida.
+3. Bloco de comandos copiaveis.
+4. Lembrete de que o usuario executa no terminal.
+
+Regra Cursor: `.cursor/rules/git-human-commit.mdc`.
+
+---
+
+## 16b. Limite de escopo por sessao
 
 O agente IA deve evitar alterar mais de 5 arquivos de codigo em uma unica iteracao sem autorizacao explicita.
 

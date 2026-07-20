@@ -295,7 +295,7 @@ def gerar_proposicoes(
                 else:
                     acao = "AUMENTAR sell-in para evitar ruptura de estoque."
                 descricao = (
-                    f"SKU {sinal.sku}{dims}: DOI actual "
+                    f"SKU {sinal.sku}{dims}: DOI atual "
                     f"{sinal.valor:.0f}d vs target {sinal.referencia:.0f}d "
                     f"(gap {gap_dias:+.0f}d). {acao}"
                 )

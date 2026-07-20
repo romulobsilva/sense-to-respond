@@ -2207,6 +2207,20 @@ NR alto de DOI n\~ao remove alertas forward do quadro.
   disclaimer (ADR-0014).
 \end{definicao}
 
+\begin{definicao}[Relat\'orio Analista HTML$\to$PDF]
+  Ap\'os o output guardrail, \texttt{gerar\_relatorio\_analista} monta
+  HTML com: cabe\c{c}alho da sess\~ao, tabelas do top $N$ por t\'opico,
+  PNG embutido, leitura determin\'istica por bloco, narrativa LLM
+  (p\'os-disclaimer) e se\c{c}\~ao HITL/limita\c{c}\~oes. Exporta
+  \[
+    \texttt{output/relatorio\_}\langle\texttt{sessao\_id}\rangle\texttt{.pdf}
+  \]
+  via WeasyPrint (HTML intermedi\'ario no mesmo diret\'orio).
+  Se o PDF falhar, o HTML permanece; auditoria \texttt{relatorio\_pdf}
+  registra \texttt{ok}/\texttt{erro}. N\~ao recalcula $I^{\text{prio}}$
+  nem reordena o ranking.
+\end{definicao}
+
 \begin{definicao}[Filtro de Ru\'ido Persistente]
   Um sinal \texttt{desvio\_persistente} s\'o gera proposi\c{c}\~ao se
   \[

@@ -146,3 +146,9 @@ def test_plot_codigo_fonte_sem_sku_hardcoded() -> None:
     proibidos = ("Belvita", "Tang", "Milka", "Oreo", "Halls", "Diamante")
     for termo in proibidos:
         assert termo not in fonte
+
+
+def test_titulo_png_usa_sessao_com_acento() -> None:
+    """Rotulo visivel do titulo usa 'sessao' acentuado (UTF-8)."""
+    fonte = Path("visualizacao.py").read_text(encoding="utf-8")
+    assert "sess\\u00e3o=" in fonte or "sessão=" in fonte
