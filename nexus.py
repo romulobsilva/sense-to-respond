@@ -19,6 +19,8 @@ from datashield import (
     normalizar_dataset,
     processar_arquivo,
 )
+from dominion_pbi import rodar_dominion_pbi
+from powerbi_mcp import PowerBIQueryClient, criar_cliente_pbi
 from guardrails import (
     aplicar_output_guardrail,
     montar_fila_com_flags,
@@ -80,6 +82,8 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
     "relatorio_pdf",
     "sessao_fim",
     "input_guardrail_blocked",
+    "catalog_execucao",
+    "dominion_pbi",
 })
 
 
@@ -94,6 +98,8 @@ class Nexus:
     settings: Settings
     hitl: InterfaceHITL = field(default_factory=HITLAutoApprove)
     arquivo_entrada: Optional[str] = None
+    fonte_dados: Optional[str] = None
+    pbi_client: Optional[PowerBIQueryClient] = None
     harness: Harness = field(init=False)
     critic: CriticAgent = field(init=False)
     logs: List[str] = field(default_factory=list)
@@ -285,6 +291,95 @@ class Nexus:
         )
 
         return True
+
+    def _fase_dominion_pbi(
+        self,
+        state: Dict[str, Any],
+        auditoria: Optional[AuditTrail],
+    ) -> None:
+        """
+        Dominion PBI: catalogo DAX + ExecuteQuery (ADR-0025).
+
+        Nao usa DataShield nem GenerateQuery. Client injetavel
+        (fixture CI ou REST com token).
+        """
+        catalog_path = self.settings.pbi_catalog_path
+        if not catalog_path:
+            raise ValueError(
+                "PBI_CATALOG_PATH nao definido para --fonte pbi."
+            )
+
+        client = self.pbi_client
+        if client is None:
+            client = criar_cliente_pbi(
+                fixture_path=self.settings.pbi_fixture_path,
+                access_token=self.settings.pbi_access_token,
+            )
+
+        self._log(
+            f"Dominion PBI: catalogo='{catalog_path}' "
+            f"artifact='{self.settings.pbi_artifact_id or 'default'}'"
+        )
+        out = rodar_dominion_pbi(
+            catalog_path=catalog_path,
+            artifact_id_env=self.settings.pbi_artifact_id,
+            client=client,
+            thresholds=self.settings.thresholds,
+        )
+        state["fonte_dados"] = out.get("fonte_dados", "pbi")
+        state["pbi_catalog_id"] = out.get("pbi_catalog_id")
+        state["pbi_artifact_id"] = out.get("pbi_artifact_id")
+        state["resultados_pbi"] = out.get("resultados_pbi")
+        state["catalog_execucao"] = out.get("catalog_execucao")
+        state["sinais"] = out.get("sinais", [])
+        resultados = state.get("resultados")
+        if not isinstance(resultados, dict):
+            resultados = {}
+            state["resultados"] = resultados
+        dominion_meta = out.get("resultados", {})
+        if isinstance(dominion_meta, dict):
+            resultados.update(dominion_meta)
+
+        n_ok = 0
+        execucao = state.get("catalog_execucao")
+        if isinstance(execucao, list):
+            n_ok = sum(
+                1
+                for item in execucao
+                if isinstance(item, dict) and item.get("ok")
+            )
+        self._log(
+            f"Dominion PBI: queries_ok={n_ok}, "
+            f"sinais={len(state.get('sinais', []))}"
+        )
+        registrar_handoff(
+            state,
+            "dominion_pbi",
+            "state",
+            ["resultados_pbi", "catalog_execucao", "sinais"],
+        )
+        self._registrar_handoff_audit(
+            auditoria,
+            "dominion_pbi",
+            "state",
+            ["resultados_pbi", "catalog_execucao", "sinais"],
+        )
+        if auditoria is not None:
+            auditoria.registrar(
+                "catalog_execucao",
+                {
+                    "pbi_catalog_id": state.get("pbi_catalog_id"),
+                    "pbi_artifact_id": state.get("pbi_artifact_id"),
+                    "execucao": state.get("catalog_execucao"),
+                },
+            )
+            auditoria.registrar(
+                "dominion_pbi",
+                {
+                    "n_sinais": len(state.get("sinais", [])),
+                    "n_queries_ok": n_ok,
+                },
+            )
 
     def _fase_dominion_mondelez(
         self,
@@ -700,7 +795,7 @@ class Nexus:
         """
         Pipeline MVP completo com guardrails, validacao e fila Nexus.
 
-        Fluxo: Input guardrail -> DataShield (se arquivo) -> Dominion ->
+        Fluxo: Input guardrail -> (DataShield|Dominion PBI|legado) ->
                Sinais -> Optimus -> Validador -> Critic -> Fila -> Output guardrail
         """
         self.logs.clear()
@@ -719,47 +814,82 @@ class Nexus:
         self._log(f"Input guardrail OK: {input_check.detalhe}")
 
         state = criar_state_inicial(pergunta_usuario)
+        modo_pbi = (self.fonte_dados or "").strip().lower() == "pbi"
+        if modo_pbi and self.arquivo_entrada:
+            self._log("=== FIM NEXUS MVP (--fonte pbi e --input sao exclusivos) ===")
+            return {
+                "bloqueado": True,
+                "motivo": "--fonte pbi e --input sao mutuamente exclusivos.",
+                "logs": list(self.logs),
+            }
 
         auditoria_pre: Optional[AuditTrail] = None
-
-        if self.arquivo_entrada:
-            from audit import AuditTrail as AT, gerar_sessao_id
-            auditoria_pre = AT(sessao_id=gerar_sessao_id())
-            pode_continuar = self._fase_datashield(state, auditoria_pre)
-            if not pode_continuar:
-                self._log("=== FIM NEXUS MVP (DataShield bloqueou) ===")
-                state["logs"] = list(self.logs)
-                if auditoria_pre is not None:
-                    state["auditoria"] = auditoria_pre.para_dict()
-                return state
-
         auditoria: Optional[AuditTrail] = None
 
-        if state.get("dataset_canonico") is not None:
-            if auditoria_pre is not None:
-                auditoria = auditoria_pre
-            else:
-                from audit import AuditTrail as AT, gerar_sessao_id
-                auditoria = AT(sessao_id=gerar_sessao_id())
-            self._fase_dominion_mondelez(state, auditoria)
+        if modo_pbi:
+            from audit import AuditTrail as AT, gerar_sessao_id
+            auditoria = AT(sessao_id=gerar_sessao_id())
+            try:
+                self._fase_dominion_pbi(state, auditoria)
+            except (ValueError, FileNotFoundError) as exc:
+                self._log(f"Dominion PBI bloqueado: {exc}")
+                state["logs"] = list(self.logs)
+                state["auditoria"] = auditoria.para_dict()
+                return {
+                    "bloqueado": True,
+                    "motivo": str(exc),
+                    "logs": list(self.logs),
+                    "auditoria": auditoria.para_dict(),
+                }
+            sinais_pbi = state.get("sinais")
+            n_sinais = len(sinais_pbi) if isinstance(sinais_pbi, list) else 0
+            self._log(f"Sinais PBI adaptados: {n_sinais}")
         else:
-            dominion_state = self.harness.executar_dominion(
-                pergunta_usuario,
-                preservar_logs=True,
+            if self.arquivo_entrada:
+                from audit import AuditTrail as AT, gerar_sessao_id
+                auditoria_pre = AT(sessao_id=gerar_sessao_id())
+                pode_continuar = self._fase_datashield(state, auditoria_pre)
+                if not pode_continuar:
+                    self._log("=== FIM NEXUS MVP (DataShield bloqueou) ===")
+                    state["logs"] = list(self.logs)
+                    if auditoria_pre is not None:
+                        state["auditoria"] = auditoria_pre.para_dict()
+                    return state
+
+            if state.get("dataset_canonico") is not None:
+                if auditoria_pre is not None:
+                    auditoria = auditoria_pre
+                else:
+                    from audit import AuditTrail as AT, gerar_sessao_id
+                    auditoria = AT(sessao_id=gerar_sessao_id())
+                state["fonte_dados"] = "csv"
+                self._fase_dominion_mondelez(state, auditoria)
+            else:
+                dominion_state = self.harness.executar_dominion(
+                    pergunta_usuario,
+                    preservar_logs=True,
+                )
+                state["fonte_dados"] = "simulado"
+                state["dados"] = dominion_state.get("dados", {})
+                state["resultados"] = dominion_state.get("resultados", {})
+                state["acoes_executadas"] = dominion_state.get(
+                    "acoes_executadas", []
+                )
+
+                auditoria_raw = dominion_state.get("auditoria")
+                if isinstance(auditoria_raw, dict):
+                    auditoria = self.harness.auditoria
+
+            sinais = extrair_sinais_de_resultados(
+                state["resultados"],
+                thresholds=self.settings.thresholds,
             )
-            state["dados"] = dominion_state.get("dados", {})
-            state["resultados"] = dominion_state.get("resultados", {})
-            state["acoes_executadas"] = dominion_state.get("acoes_executadas", [])
-
-            auditoria_raw = dominion_state.get("auditoria")
-            if isinstance(auditoria_raw, dict):
-                auditoria = self.harness.auditoria
-
-        sinais = extrair_sinais_de_resultados(state["resultados"], thresholds=self.settings.thresholds)
-        state["sinais"] = [s.para_dict() for s in sinais]
-        self._log(f"Sinais extraidos: {len(sinais)}")
-        registrar_handoff(state, "dominion", "state", ["sinais"])
-        self._registrar_handoff_audit(auditoria, "dominion", "state", ["sinais"])
+            state["sinais"] = [s.para_dict() for s in sinais]
+            self._log(f"Sinais extraidos: {len(sinais)}")
+            registrar_handoff(state, "dominion", "state", ["sinais"])
+            self._registrar_handoff_audit(
+                auditoria, "dominion", "state", ["sinais"]
+            )
 
         self._fase_optimus_com_validacao(state, auditoria)
 
@@ -816,9 +946,13 @@ class Nexus:
         sessao_id_viz = "sessao"
         if auditoria is not None:
             sessao_id_viz = auditoria.sessao_id
+        fonte_viz = state.get("fonte_dados")
         meta_viz = plotar_resumo_executivo(
             resumo_exec,
             sessao_id=sessao_id_viz,
+            fonte_dados=(
+                str(fonte_viz) if isinstance(fonte_viz, str) else None
+            ),
         )
         artefatos = state.get("artefatos_visuais")
         if not isinstance(artefatos, list):
@@ -899,6 +1033,12 @@ class Nexus:
         caminho_png = None
         if isinstance(meta_viz, dict) and meta_viz.get("ok"):
             caminho_png = meta_viz.get("caminho")
+        fonte_rel = state.get("fonte_dados")
+        fonte_rel_str = (
+            str(fonte_rel) if isinstance(fonte_rel, str) else None
+        )
+        catalog_rel = state.get("pbi_catalog_id")
+        artifact_rel = state.get("pbi_artifact_id")
         meta_rel = gerar_relatorio_analista(
             resumo_exec,
             sessao_id=sessao_id_viz,
@@ -910,6 +1050,13 @@ class Nexus:
             confianca_critic=confianca,
             critic_aprovado=critic_aprovado,
             proposicoes=proposicoes,
+            fonte_dados=fonte_rel_str,
+            pbi_catalog_id=(
+                str(catalog_rel) if isinstance(catalog_rel, str) else None
+            ),
+            pbi_artifact_id=(
+                str(artifact_rel) if isinstance(artifact_rel, str) else None
+            ),
         )
         artefatos.append(meta_rel)
         if meta_rel.get("html_ok"):

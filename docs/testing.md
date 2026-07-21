@@ -883,18 +883,30 @@ Schema com campos faltantes gera diagnostico
 
 ## 13d. Testes Dual Ingress / PBI MCP (ADR-0025)
 
-### PoC (quando 1.7a.2 for implementado)
+### PoC (1.7a.2 implementado)
 
 ```text
-carregar_catalogo_dax valida YAML exemplo
-executar_catalogo_pbi com fixture JSON (sem rede/OAuth no CI)
-adaptador resultados_pbi -> sinais (tipos PoC)
-Nexus --fonte pbi nao exige dataset_canonico
-Nexus --input csv nao preenche resultados_pbi
-auditoria registra catalog_execucao sem dump completo
+carregar_catalogo_dax valida YAML exemplo          [x] test_dominion_pbi
+executar_catalogo_pbi com fixture JSON             [x]
+adaptador resultados_pbi -> sinais (tipos PoC)     [x]
+Nexus --fonte pbi nao exige dataset_canonico       [x]
+auditoria registra catalog_execucao sem dump       [x]
 ```
 
-Smoke manual (nao CI): MCP autenticado + artifact_id + PDF.
+Comando CI local:
+
+```text
+PYTEST_ADDOPTS= python -m pytest tests/test_dominion_pbi.py -q -c /dev/null --rootdir=.
+```
+
+Smoke manual (nao CI):
+
+```text
+PBI_ACCESS_TOKEN=... PBI_FIXTURE_PATH= \
+  python main.py --modo nexus --fonte pbi
+```
+
+(HITL_MODE=auto recomendado para smoke nao interativo.)
 
 ### Backlog pos-PoC (nao exigir agora)
 

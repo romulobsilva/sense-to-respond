@@ -73,12 +73,16 @@ def _resumo() -> Dict[str, Any]:
         "diversidade_doi": {
             "n_ruptura": 1,
             "n_overstock": 1,
+            "cota_ruptura": 1,
+            "cota_overstock": 1,
             "candidatos_ruptura": 6,
             "candidatos_overstock": 4,
         },
         "diversidade_forward": {
             "n_ruptura": 1,
             "n_overstock": 0,
+            "cota_ruptura": 1,
+            "cota_overstock": 0,
             "candidatos_ruptura": 3,
             "candidatos_overstock": 2,
         },
@@ -196,3 +200,53 @@ def test_codigo_sem_sku_hardcoded() -> None:
     fonte = Path("relatorio.py").read_text(encoding="utf-8")
     for termo in ("Belvita", "Tang", "Milka", "Oreo", "Halls"):
         assert termo not in fonte
+
+
+def test_html_fonte_pbi_metadados_e_unidade() -> None:
+    """Cabecalho PBI mostra catalog/artifact e impacto em ton SO."""
+    resumo = _resumo()
+    resumo["top_forward"] = []
+    resumo["top_oportunidades"] = []
+    resumo["total_candidatos_forward"] = 0
+    resumo["total_candidatos_oportunidade"] = 0
+    resumo["diversidade_forward"] = {
+        "n_ruptura": 0,
+        "n_overstock": 0,
+        "cota_ruptura": 3,
+        "cota_overstock": 2,
+        "candidatos_ruptura": 0,
+        "candidatos_overstock": 0,
+    }
+    html_doc = montar_html_relatorio(
+        resumo=resumo,
+        sessao_id="pbi-t1",
+        explicacao="Narrativa cita sell-out por categoria.",
+        fonte_dados="pbi",
+        pbi_catalog_id="mondelez_s2r_v1",
+        pbi_artifact_id="8d81650c-ea21-4fc4-8303-d067226f9442",
+        total_fila=7,
+    )
+    assert "Fonte de dados" in html_doc
+    assert "pbi | catalog=mondelez_s2r_v1" in html_doc
+    assert "artifact=8d81650c-ea21-4fc4-8303-d067226f9442" in html_doc
+    assert "Arquivo de entrada" not in html_doc
+    assert "(simula" not in html_doc
+    assert "ton SO (proxy)" in html_doc
+    assert "Impacto prio. (ton SO (proxy))" in html_doc
+    assert "limiar_doi_gap_media" in html_doc
+    assert "sem entrar neste bloco" in html_doc
+    assert "0 / 0 (sem candidatos no top)" in html_doc
+    assert "DOI_Policy" in html_doc
+    assert "Graficos nao gerados" in html_doc
+    assert "Forward / Plano" in html_doc
+
+
+def test_html_diversidade_mostra_cotas() -> None:
+    """Cabecalho distingue contagem no top e cota de diversidade."""
+    html_doc = montar_html_relatorio(
+        resumo=_resumo(),
+        sessao_id="div-t1",
+        explicacao="x",
+    )
+    assert "Polaridade no top DOI" in html_doc
+    assert "1 / 1 (cota 1/1)" in html_doc

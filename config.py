@@ -81,6 +81,10 @@ class Settings:
     hitl_mode: str
     thresholds: DomainThresholds
     schema_path: Optional[str] = None
+    pbi_artifact_id: Optional[str] = None
+    pbi_catalog_path: Optional[str] = None
+    pbi_access_token: Optional[str] = None
+    pbi_fixture_path: Optional[str] = None
 
 
 def _read_float(name: str, default: str) -> float:
@@ -238,6 +242,11 @@ def load_settings() -> Settings:
     schema_path_raw = os.getenv("SCHEMA_PATH", "").strip()
     schema_path: Optional[str] = schema_path_raw if schema_path_raw else None
 
+    pbi_artifact_raw = os.getenv("PBI_ARTIFACT_ID", "").strip()
+    pbi_catalog_raw = os.getenv("PBI_CATALOG_PATH", "").strip()
+    pbi_token_raw = os.getenv("PBI_ACCESS_TOKEN", "").strip()
+    pbi_fixture_raw = os.getenv("PBI_FIXTURE_PATH", "").strip()
+
     return Settings(
         openai_api_key=api_key,
         openai_model=model,
@@ -247,6 +256,10 @@ def load_settings() -> Settings:
         hitl_mode=hitl_mode,
         thresholds=thresholds,
         schema_path=schema_path,
+        pbi_artifact_id=pbi_artifact_raw or None,
+        pbi_catalog_path=pbi_catalog_raw or None,
+        pbi_access_token=pbi_token_raw or None,
+        pbi_fixture_path=pbi_fixture_raw or None,
     )
 
 

@@ -1,0 +1,49 @@
+{
+  "Q1_kpis": {
+    "columns": [
+      "SKUsInAlert",
+      "SKUsUnderstock",
+      "SKUsOverstock",
+      "SellOutActualTon",
+      "DOIActualDays"
+    ],
+    "rows": [
+      [4, 2, 2, 72447.19, 28.78]
+    ]
+  },
+  "Q2_top_alertas": {
+    "columns": [
+      "Fact_S2R Country",
+      "Fact_S2R Category",
+      "Fact_S2R Brand",
+      "Fact_S2R SKU_Code",
+      "Fact_S2R SKU_Description",
+      "AlertType",
+      "DOIStatus",
+      "DOIActualDays",
+      "SellOutActualTon",
+      "AlertSeverity"
+    ],
+    "rows": [
+      ["Brazil", "Cheese", "Philadelphia", "PHI-LIGHT-150G", "Philadelphia Light 150g", "Stock-out Risk", "Understock", 17.86, 609.15, 3],
+      ["Chile", "Cheese", "Philadelphia", "PHI-ORIGINAL-150G", "Philadelphia Original 150g", "Stock-out Risk", "Understock", 20.24, 210.29, 3],
+      ["Mexico", "Chocolates", "Toblerone", "TOB-BAR-100G", "Toblerone Milk 100g", "Stock-out Risk", "Understock", 19.94, 127.24, 3],
+      ["Brazil", "Biscuits", "Belvita", "BEL-LEITE-75G", "Belvita Leite e Mel 75g", "Stock-out Risk", "Understock", 19.63, 781.64, 3]
+    ]
+  },
+  "Q3_sta_por_categoria": {
+    "columns": [
+      "Fact_S2R Category",
+      "SellOutActualTon",
+      "SellOutPlanTon",
+      "StaSoPct",
+      "DOIActualDays",
+      "SKUsInAlert"
+    ],
+    "rows": [
+      ["Chocolates", 17487.14, 25244, 0.456, 26.34, 1],
+      ["Biscuits", 25328.37, 35787, 0.496, 31.17, 0],
+      ["Cheese", 3859.72, 5559, 0.476, 19.29, 2]
+    ]
+  }
+}

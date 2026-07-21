@@ -139,6 +139,13 @@ def main() -> None:
         help="Caminho para CSV/XLSX de entrada (ativa DataShield).",
     )
     parser.add_argument(
+        "--fonte",
+        choices=("csv", "pbi"),
+        default=None,
+        help="Ingresso de dados: csv (com --input) ou pbi (catalogo DAX). "
+        "Mutuamente exclusivo com o outro caminho.",
+    )
+    parser.add_argument(
         "--top-doi",
         type=int,
         default=None,
@@ -185,23 +192,45 @@ def main() -> None:
         "modelado com a DRE."
     )
 
-    if args.arquivo_entrada:
+    if args.fonte == "pbi" and args.arquivo_entrada:
+        raise SystemExit(
+            "Erro: --fonte pbi e --input sao mutuamente exclusivos."
+        )
+    if args.fonte == "csv" and not args.arquivo_entrada:
+        raise SystemExit(
+            "Erro: --fonte csv exige --input com caminho do arquivo."
+        )
+
+    if args.fonte == "pbi":
+        pergunta = (
+            "Analise os indicadores do modelo Power BI (catalogo DAX), "
+            "identifique desvios e gere proposicoes de acao."
+        )
+    elif args.arquivo_entrada:
         pergunta = (
             "Analise os dados do arquivo fornecido, identifique desvios "
             "e gere proposicoes de acao."
         )
 
     if args.modo == "legado":
+        if args.fonte == "pbi":
+            raise SystemExit(
+                "Erro: --fonte pbi requer --modo nexus."
+            )
         harness = Harness(agente=agente)
         resultado = harness.executar(pergunta)
         tipos_auditoria = TIPOS_HARNESS
     else:
         hitl = _criar_hitl(settings.hitl_mode)
+        fonte = args.fonte
+        if fonte is None and args.arquivo_entrada:
+            fonte = "csv"
         nexus = Nexus(
             agente=agente,
             settings=settings,
             hitl=hitl,
             arquivo_entrada=args.arquivo_entrada,
+            fonte_dados=fonte,
         )
         resultado = nexus.executar(pergunta)
         tipos_auditoria = TIPOS_NEXUS

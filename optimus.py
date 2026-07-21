@@ -98,8 +98,9 @@ def _estimar_impacto_nr(sinal: Sinal) -> float:
     """
     Estima impacto financeiro usando NR real propagado pela tool.
 
-    Prioriza ``sinal.nr_impacto`` (NR real em USD, calculado pela tool
-    parametrizada). Se nao disponivel (== 0), aplica fallback generico:
+    Prioriza ``sinal.nr_impacto`` quando > 0 (NR real em USD no caminho
+    CSV/tool, ou proxy de volume em toneladas no caminho PBI PoC).
+    Se nao disponivel (== 0), aplica fallback generico:
     abs(desvio_pct/100) * abs(valor_ton).
 
     ADR-0024: propagar NR real elimina distorcao de priorizacao onde
@@ -294,9 +295,17 @@ def gerar_proposicoes(
                         acao = "Reduzir sell-in ou acelerar sell-out para drenar estoque."
                 else:
                     acao = "AUMENTAR sell-in para evitar ruptura de estoque."
+                # Caminho PBI PoC: target e DOI atual +/- limiar (nao DOI_Policy).
+                if sinal.sinal_id.startswith("SIG-PBI-DOI"):
+                    alvo_txt = (
+                        f"target PoC {sinal.referencia:.0f}d "
+                        f"(DOI atual +/- limiar_doi_gap_media; nao DOI_Policy)"
+                    )
+                else:
+                    alvo_txt = f"target {sinal.referencia:.0f}d"
                 descricao = (
                     f"SKU {sinal.sku}{dims}: DOI atual "
-                    f"{sinal.valor:.0f}d vs target {sinal.referencia:.0f}d "
+                    f"{sinal.valor:.0f}d vs {alvo_txt} "
                     f"(gap {gap_dias:+.0f}d). {acao}"
                 )
                 proposicoes.append(Proposicao(
@@ -516,13 +525,22 @@ def _top_diversificado(
             if p not in escolhidos
         ]
         escolhidos.extend(resto[: n_total - len(escolhidos)])
+    selecionados = escolhidos[:n_total]
+    # n_* = contagem real no top; cota_* = alvo de diversidade (pode nao
+    # ser atingida se faltar candidatos de uma polaridade).
     meta = {
-        f"n_{chave_a}": n_a,
-        f"n_{chave_b}": n_b,
+        f"cota_{chave_a}": n_a,
+        f"cota_{chave_b}": n_b,
+        f"n_{chave_a}": sum(
+            1 for p in selecionados if polaridade_fn(p) == chave_a
+        ),
+        f"n_{chave_b}": sum(
+            1 for p in selecionados if polaridade_fn(p) == chave_b
+        ),
         f"candidatos_{chave_a}": len(grupo_a),
         f"candidatos_{chave_b}": len(grupo_b),
     }
-    return escolhidos[:n_total], meta
+    return selecionados, meta
 
 
 def montar_resumo_executivo(
@@ -621,16 +639,20 @@ def formatar_resumo_executivo_texto(resumo: Dict[str, Any]) -> str:
     div_f = resumo.get("diversidade_forward") or {}
     if isinstance(div_d, dict) and div_d:
         linhas.append(
-            f"Diversidade DOI: cota ruptura={div_d.get('n_ruptura', 0)} "
+            f"Diversidade DOI: no top ruptura={div_d.get('n_ruptura', 0)} "
             f"overstock={div_d.get('n_overstock', 0)} "
-            f"(cand {div_d.get('candidatos_ruptura', 0)}/"
+            f"(cota {div_d.get('cota_ruptura', div_d.get('n_ruptura', 0))}/"
+            f"{div_d.get('cota_overstock', div_d.get('n_overstock', 0))}; "
+            f"cand {div_d.get('candidatos_ruptura', 0)}/"
             f"{div_d.get('candidatos_overstock', 0)})"
         )
     if isinstance(div_f, dict) and div_f:
         linhas.append(
-            f"Diversidade forward: cota ruptura={div_f.get('n_ruptura', 0)} "
+            f"Diversidade forward: no top ruptura={div_f.get('n_ruptura', 0)} "
             f"overstock={div_f.get('n_overstock', 0)} "
-            f"(cand {div_f.get('candidatos_ruptura', 0)}/"
+            f"(cota {div_f.get('cota_ruptura', div_f.get('n_ruptura', 0))}/"
+            f"{div_f.get('cota_overstock', div_f.get('n_overstock', 0))}; "
+            f"cand {div_f.get('candidatos_ruptura', 0)}/"
             f"{div_f.get('candidatos_overstock', 0)})"
         )
 
@@ -648,7 +670,8 @@ def formatar_resumo_executivo_texto(resumo: Dict[str, Any]) -> str:
             pol_txt = f" [{pol}]" if pol else ""
             linhas.append(
                 f"{i}. [{item.get('proposicao_id', '')}] {item.get('tipo', '')}{pol_txt} | "
-                f"{item.get('titulo', '')} | R$ {float(item.get('impacto_financeiro', 0)):.2f} "
+                f"{item.get('titulo', '')} | impacto "
+                f"{float(item.get('impacto_financeiro', 0)):.2f} "
                 f"(I_prio={float(item.get('impacto_priorizado', 0)):.2f})"
             )
 

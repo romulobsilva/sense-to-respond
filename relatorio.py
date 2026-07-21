@@ -13,7 +13,7 @@ import base64
 import html
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from state_types import Proposicao
 
@@ -70,6 +70,22 @@ def _fmt_num(valor: Any) -> str:
         )
     except (TypeError, ValueError):
         return _esc(valor)
+
+
+def _eh_fonte_pbi(fonte_dados: Optional[str]) -> bool:
+    """True quando o run veio do caminho Power BI."""
+    return (fonte_dados or "").strip().lower() == "pbi"
+
+
+def _rotulo_unidade_impacto(fonte_dados: Optional[str]) -> str:
+    """
+    Rotulo da unidade de impacto na apresentacao.
+
+    CSV/simulado: NR em moeda (R$). PBI PoC: proxy em toneladas de sell-out.
+    """
+    if _eh_fonte_pbi(fonte_dados):
+        return "ton SO (proxy)"
+    return "R$"
 
 
 def _impacto(item: Mapping[str, Any]) -> float:
@@ -181,6 +197,8 @@ def _mapa_proposicoes(
 def _evidencias_top_n_html(
     resumo: Mapping[str, Any],
     proposicoes: Optional[Sequence[Proposicao]],
+    *,
+    fonte_dados: Optional[str] = None,
 ) -> str:
     """
     Cards HTML so para o top N (nao a fila inteira).
@@ -193,6 +211,7 @@ def _evidencias_top_n_html(
             "<p><em>(nenhum item no top N para evid\u00eancias)</em></p>"
         )
 
+    unidade = _rotulo_unidade_impacto(fonte_dados)
     mapa = _mapa_proposicoes(proposicoes)
     # polaridade por id a partir do resumo
     pol_por_id: Dict[str, str] = {}
@@ -229,7 +248,7 @@ def _evidencias_top_n_html(
                 f"| <strong>Polaridade:</strong> "
                 f"{_esc(pol_por_id.get(pid, '-'))}</p>"
                 f"<p>{_esc(item_resumo.get('descricao'))}</p>"
-                f"<p><strong>Impacto:</strong> R$ "
+                f"<p><strong>Impacto:</strong> {_esc(unidade)} "
                 f"{_fmt_num(item_resumo.get('impacto_financeiro'))} "
                 f"| <strong>Urg\u00eancia:</strong> "
                 f"{_esc(item_resumo.get('urgencia_horas'))}h</p>"
@@ -255,7 +274,8 @@ def _evidencias_top_n_html(
             f"| <strong>Polaridade:</strong> {_esc(pol)} "
             f"| <strong>SKUs:</strong> {_esc(', '.join(prop.skus))}</p>"
             f"<p class='desc'>{_esc(prop.descricao)}</p>"
-            f"<p><strong>Impacto:</strong> R$ {_fmt_num(prop.impacto_financeiro)} "
+            f"<p><strong>Impacto:</strong> {_esc(unidade)} "
+            f"{_fmt_num(prop.impacto_financeiro)} "
             f"| <strong>Urg\u00eancia:</strong> {_esc(prop.urgencia_horas)}h</p>"
             "<p><strong>Evid\u00eancias (IDs de sinal):</strong></p>"
             f"<ul class='evid-list'>{evid_lis}</ul>"
@@ -265,9 +285,24 @@ def _evidencias_top_n_html(
     return "\n".join(cards)
 
 
-def _leitura_bloco(titulo: str, chave: str, itens: List[Dict[str, Any]]) -> str:
+def _leitura_bloco(
+    titulo: str,
+    chave: str,
+    itens: List[Dict[str, Any]],
+    *,
+    fonte_dados: Optional[str] = None,
+) -> str:
     """Texto deterministico de interpretacao do bloco (ja escapado)."""
+    unidade = _rotulo_unidade_impacto(fonte_dados)
+    modo_pbi = _eh_fonte_pbi(fonte_dados)
     if not itens:
+        if modo_pbi and chave in ("top_forward", "top_oportunidades"):
+            return _esc(
+                f"{titulo}: nenhum item no top N. No PoC PBI o recorte "
+                f"executivo prioriza DOI; desvio de sell-out por categoria "
+                f"pode existir na fila HITL sem entrar neste bloco "
+                f"estratificado."
+            )
         return _esc(
             f"{titulo}: nenhum item no top N deste run "
             f"(sem candidatos ou N=0)."
@@ -308,21 +343,28 @@ def _leitura_bloco(titulo: str, chave: str, itens: List[Dict[str, Any]]) -> str:
         )
     partes.append(
         f"Maior impacto priorizado: {topo_id} ({topo_sku}) = "
-        f"{topo_i:,.2f} NR."
+        f"{topo_i:,.2f} {unidade}."
     )
     return _esc(" ".join(partes))
 
 
-def _tabela_bloco(itens: List[Dict[str, Any]]) -> str:
+def _tabela_bloco(
+    itens: List[Dict[str, Any]],
+    *,
+    fonte_dados: Optional[str] = None,
+) -> str:
     """HTML table para um bloco top N."""
     if not itens:
         return "<p><em>(sem itens)</em></p>"
+    unidade = _rotulo_unidade_impacto(fonte_dados)
     ordenados = sorted(itens, key=_impacto, reverse=True)
     linhas = [
         "<table>",
         "<thead><tr>"
-        "<th>ID</th><th>SKU</th><th>Tipo</th><th>Polaridade</th>"
-        "<th>Impacto prio.</th><th>Urg\u00eancia (h)</th>"
+        "<th>ID</th><th class='sku'>SKU</th><th>Tipo</th>"
+        "<th>Polaridade</th>"
+        f"<th>Impacto prio. ({_esc(unidade)})</th>"
+        "<th>Urg\u00eancia (h)</th>"
         "<th>T\u00edtulo</th>"
         "</tr></thead><tbody>",
     ]
@@ -330,7 +372,7 @@ def _tabela_bloco(itens: List[Dict[str, Any]]) -> str:
         linhas.append(
             "<tr>"
             f"<td>{_esc(item.get('proposicao_id'))}</td>"
-            f"<td>{_esc(_sku(item))}</td>"
+            f"<td class='sku'>{_esc(_sku(item))}</td>"
             f"<td>{_esc(item.get('tipo'))}</td>"
             f"<td>{_esc(item.get('polaridade') or '-')}</td>"
             f"<td class='num'>{_fmt_num(_impacto(item))}</td>"
@@ -340,6 +382,55 @@ def _tabela_bloco(itens: List[Dict[str, Any]]) -> str:
         )
     linhas.append("</tbody></table>")
     return "\n".join(linhas)
+
+
+def _aviso_paineis_sem_grafico(resumo: Mapping[str, Any]) -> str:
+    """
+    HTML de aviso quando blocos do top N estao vazios (grafico nao gerado).
+
+    Returns:
+        Paragrafo HTML escapado, ou string vazia se todos os blocos tem itens.
+    """
+    vazios: List[str] = []
+    for chave, titulo, _meta in CHAVES_BLOCOS:
+        if not _as_items(resumo.get(chave)):
+            vazios.append(titulo)
+    if not vazios:
+        return ""
+    lista = ", ".join(vazios)
+    return (
+        "<p class='aviso'><strong>Graficos nao gerados:</strong> "
+        f"paineis sem candidatos no top N — {_esc(lista)}. "
+        "O PNG mostra o texto "
+        "<em>(sem itens: grafico nao gerado)</em> nesses blocos; "
+        "nao e falha de renderizacao do WeasyPrint.</p>"
+    )
+
+
+def _texto_fonte_entrada(
+    *,
+    arquivo_entrada: Optional[str],
+    fonte_dados: Optional[str],
+    pbi_catalog_id: Optional[str],
+    pbi_artifact_id: Optional[str],
+) -> Tuple[str, str]:
+    """
+    Rotulo e valor do campo de fonte no cabecalho.
+
+    Returns:
+        (rotulo_dt, valor_dd) em texto plano (sem escape HTML).
+    """
+    if _eh_fonte_pbi(fonte_dados):
+        catalog = pbi_catalog_id or "n/d"
+        artifact = pbi_artifact_id or "n/d"
+        return (
+            "Fonte de dados",
+            f"pbi | catalog={catalog} | artifact={artifact}",
+        )
+    if arquivo_entrada:
+        return ("Arquivo de entrada", str(arquivo_entrada))
+    rotulo_sim = "(simula\u00e7\u00e3o / n/d)"
+    return ("Arquivo de entrada", rotulo_sim)
 
 
 def montar_html_relatorio(
@@ -354,6 +445,9 @@ def montar_html_relatorio(
     confianca_critic: Optional[float] = None,
     critic_aprovado: Optional[bool] = None,
     proposicoes: Optional[Sequence[Proposicao]] = None,
+    fonte_dados: Optional[str] = None,
+    pbi_catalog_id: Optional[str] = None,
+    pbi_artifact_id: Optional[str] = None,
 ) -> str:
     """
     Monta HTML completo do relatorio analista (UTF-8).
@@ -387,25 +481,72 @@ def montar_html_relatorio(
             aprov = "n/d"
         critic_txt = f"{confianca_critic:.2f} ({aprov})"
 
+    unidade = _rotulo_unidade_impacto(fonte_dados)
+    modo_pbi = _eh_fonte_pbi(fonte_dados)
+
     secoes_blocos: List[str] = []
     for idx, (chave, titulo, _meta) in enumerate(CHAVES_BLOCOS, start=3):
         itens = _as_items(resumo.get(chave))
         secoes_blocos.append(
             f"<section class='bloco'>"
             f"<h2>{idx}. {_esc(titulo)}</h2>"
-            f"{_tabela_bloco(itens)}"
+            f"{_tabela_bloco(itens, fonte_dados=fonte_dados)}"
             f"<h3>Leitura do bloco</h3>"
-            f"<p>{_leitura_bloco(titulo, chave, itens)}</p>"
+            f"<p>{_leitura_bloco(titulo, chave, itens, fonte_dados=fonte_dados)}</p>"
             f"</section>"
         )
 
-    evid_html = _evidencias_top_n_html(resumo, proposicoes)
+    evid_html = _evidencias_top_n_html(
+        resumo, proposicoes, fonte_dados=fonte_dados
+    )
     narrativa = _narrativa_html(explicacao)
-    entrada_txt = arquivo_entrada or "(simulacao / n/d)"
-    # Rotulos PT-BR com acentos (fora de expressoes f-string).
-    rotulo_sim = "(simula\u00e7\u00e3o / n/d)"
-    if not arquivo_entrada:
-        entrada_txt = rotulo_sim
+    rotulo_fonte, entrada_txt = _texto_fonte_entrada(
+        arquivo_entrada=arquivo_entrada,
+        fonte_dados=fonte_dados,
+        pbi_catalog_id=pbi_catalog_id,
+        pbi_artifact_id=pbi_artifact_id,
+    )
+
+    def _linha_diversidade(meta: Mapping[str, Any], vazio_ok: bool) -> str:
+        n_r = meta.get("n_ruptura", "-")
+        n_o = meta.get("n_overstock", "-")
+        cota_r = meta.get("cota_ruptura")
+        cota_o = meta.get("cota_overstock")
+        if vazio_ok and n_r == 0 and n_o == 0:
+            return "0 / 0 (sem candidatos no top)"
+        if cota_r is not None and cota_o is not None:
+            return f"{n_r} / {n_o} (cota {cota_r}/{cota_o})"
+        return f"{n_r} / {n_o}"
+
+    div_doi_txt = _linha_diversidade(div_d, vazio_ok=False)
+    div_fwd_txt = _linha_diversidade(div_f, vazio_ok=True)
+
+    aviso_narrativa = (
+        "Texto gerado pelo LLM a partir de evid\u00eancias "
+        "determin\u00edsticas. N\u00e3o recalcula impactos nem reordena "
+        "o top N. O bloco bruto de cita\u00e7\u00f5es da fila inteira "
+        "foi omitido desta se\u00e7\u00e3o (ver se\u00e7\u00e3o 7)."
+    )
+    if modo_pbi:
+        aviso_narrativa = (
+            aviso_narrativa
+            + " Caminho PBI PoC: mencoes a sell-out por categoria na "
+            "narrativa podem referir a fila HITL mesmo com Forward/"
+            "Oportunidades vazios no top N."
+        )
+
+    lim_pbi_html = ""
+    if modo_pbi:
+        lim_pbi_html = (
+            "<li>PoC PBI: impacto exibido em "
+            f"<strong>{_esc(unidade)}</strong> (proxy de volume), "
+            "n\u00e3o em moeda NR.</li>"
+            "<li>PoC PBI: target DOI = DOI atual +/- "
+            "<code>limiar_doi_gap_media</code>; ainda n\u00e3o usa "
+            "a tabela <code>DOI_Policy</code> do modelo.</li>"
+            "<li>PoC PBI: bloco Forward/Oportunidades pode ficar vazio "
+            "mesmo com sinais de sell-out na fila (recorte DOI-first).</li>"
+        )
 
     html_doc = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -423,11 +564,14 @@ def montar_html_relatorio(
   .meta dt {{ font-weight: bold; }}
   .meta dd {{ margin: 0 0 6px 0; }}
   table {{ width: 100%; border-collapse: collapse; margin: 8px 0 12px;
-           font-size: 9pt; }}
-  th, td {{ border: 1px solid #ccc; padding: 4px 6px; text-align: left;
-            vertical-align: top; }}
+           font-size: 8.5pt; table-layout: fixed; }}
+  th, td {{ border: 1px solid #ccc; padding: 3px 5px; text-align: left;
+            vertical-align: top; overflow-wrap: anywhere;
+            word-break: break-word; }}
   th {{ background: #eee; }}
   td.num {{ text-align: right; white-space: nowrap; }}
+  td.sku, th.sku {{ width: 14%; }}
+  tr {{ page-break-inside: avoid; break-inside: avoid; }}
   img.chart {{ max-width: 100%; height: auto; margin: 10px 0; }}
   .aviso {{ background: #fff8e6; border-left: 4px solid #c90;
             padding: 8px 10px; margin: 14px 0; }}
@@ -449,8 +593,10 @@ def montar_html_relatorio(
 <section>
 <h2>1. Cabe\u00e7alho da sess\u00e3o</h2>
 <dl class="meta">
-  <dt>Arquivo de entrada</dt>
+  <dt>{_esc(rotulo_fonte)}</dt>
   <dd>{_esc(entrada_txt)}</dd>
+  <dt>Unidade de impacto</dt>
+  <dd>{_esc(unidade)}</dd>
   <dt>Top N (DOI / Forward / Opps)</dt>
   <dd>{_esc(resumo.get("n_doi"))} / {_esc(resumo.get("n_forward"))} /
       {_esc(resumo.get("n_oportunidades"))}</dd>
@@ -458,12 +604,10 @@ def montar_html_relatorio(
   <dd>{_esc(resumo.get("total_candidatos_doi"))} /
       {_esc(resumo.get("total_candidatos_forward"))} /
       {_esc(resumo.get("total_candidatos_oportunidade"))}</dd>
-  <dt>Diversidade DOI (ruptura/overstock no top)</dt>
-  <dd>{_esc(div_d.get("n_ruptura", "-"))} /
-      {_esc(div_d.get("n_overstock", "-"))}</dd>
-  <dt>Diversidade Forward (ruptura/overstock no top)</dt>
-  <dd>{_esc(div_f.get("n_ruptura", "-"))} /
-      {_esc(div_f.get("n_overstock", "-"))}</dd>
+  <dt>Polaridade no top DOI (ruptura/overstock)</dt>
+  <dd>{_esc(div_doi_txt)}</dd>
+  <dt>Polaridade no top Forward (ruptura/overstock)</dt>
+  <dd>{_esc(div_fwd_txt)}</dd>
   <dt>Fila Nexus</dt>
   <dd>{_esc(total_fila)} proposi\u00e7\u00f5es
       ({_esc(revisao_obrigatoria)} com revis\u00e3o obrigat\u00f3ria)</dd>
@@ -474,19 +618,18 @@ def montar_html_relatorio(
 <section>
 <h2>2. Gr\u00e1fico de prioriza\u00e7\u00e3o (top N)</h2>
 {img_html}
-<p>Barras por impacto priorizado. Vermelho=ruptura, azul=overstock,
-verde=oportunidade. Ordem visual por impacto dentro de cada bloco;
-o ranking oficial permanece o de <code>resumo_executivo</code>.</p>
+<p>Barras por impacto priorizado ({_esc(unidade)}). Vermelho=ruptura,
+azul=overstock, verde=oportunidade. Ordem visual por impacto dentro
+de cada bloco; o ranking oficial permanece o de
+<code>resumo_executivo</code>.</p>
+{_aviso_paineis_sem_grafico(resumo)}
 </section>
 
 {"".join(secoes_blocos)}
 
 <section class="narrativa">
 <h2>6. An\u00e1lise narrativa</h2>
-<p class="aviso">Texto gerado pelo LLM a partir de evid\u00eancias
-determin\u00edsticas. N\u00e3o recalcula NR nem reordena o top N.
-O bloco bruto de cita\u00e7\u00f5es da fila inteira foi omitido desta
-se\u00e7\u00e3o (ver se\u00e7\u00e3o 7).</p>
+<p class="aviso">{_esc(aviso_narrativa)}</p>
 {narrativa}
 </section>
 
@@ -506,6 +649,7 @@ se\u00e7\u00e3o (ver se\u00e7\u00e3o 7).</p>
       {_esc(revisao_obrigatoria)}.</li>
   <li>Validar evid\u00eancias e contexto de neg\u00f3cio antes de aprovar
       proposi\u00e7\u00f5es.</li>
+  {lim_pbi_html}
 </ul>
 <div class="disclaimer">
 <strong>Disclaimer:</strong> recomenda\u00e7\u00f5es automatizadas com base
@@ -533,6 +677,9 @@ def gerar_relatorio_analista(
     confianca_critic: Optional[float] = None,
     critic_aprovado: Optional[bool] = None,
     proposicoes: Optional[Sequence[Proposicao]] = None,
+    fonte_dados: Optional[str] = None,
+    pbi_catalog_id: Optional[str] = None,
+    pbi_artifact_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Gera HTML e tenta exportar PDF via WeasyPrint.
@@ -559,6 +706,7 @@ def gerar_relatorio_analista(
         "n_forward": len(_as_items(resumo.get("top_forward"))),
         "n_oportunidades": len(_as_items(resumo.get("top_oportunidades"))),
         "n_evidencias_top": len(_ids_top_n(resumo)),
+        "fonte_dados": fonte_dados,
     }
 
     try:
@@ -573,6 +721,9 @@ def gerar_relatorio_analista(
             confianca_critic=confianca_critic,
             critic_aprovado=critic_aprovado,
             proposicoes=proposicoes,
+            fonte_dados=fonte_dados,
+            pbi_catalog_id=pbi_catalog_id,
+            pbi_artifact_id=pbi_artifact_id,
         )
         path_html.write_text(html_doc, encoding="utf-8")
         meta["html_ok"] = True

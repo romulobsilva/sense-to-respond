@@ -169,6 +169,33 @@ class TestResumoEstratificado:
         assert over.top_n_doi == 7
         assert over.top_n_forward == 7
 
+    def test_diversidade_n_reflete_selecionados_nao_cota(self) -> None:
+        """Sem overstock, n_overstock no top e 0 mesmo com cota > 0."""
+        sinais = [
+            Sinal(
+                sinal_id=f"SIG-R{i}",
+                tipo="doi_fora_politica",
+                sku=f"SKU-R{i}",
+                canal="MT",
+                metrica="doi_dias",
+                valor=10.0,
+                referencia=30.0,
+                desvio_pct=-50.0,
+                severidade="alta",
+                nr_impacto=float(10000 - i),
+            )
+            for i in range(5)
+        ]
+        props = gerar_proposicoes(sinais)
+        th = DomainThresholds(top_n_doi=5, top_n_forward=1, top_n_oportunidades=1)
+        resumo = montar_resumo_executivo(props, th)
+        div = resumo["diversidade_doi"]
+        assert div["cota_ruptura"] == 3
+        assert div["cota_overstock"] == 2
+        assert div["n_ruptura"] == 5
+        assert div["n_overstock"] == 0
+        assert div["candidatos_overstock"] == 0
+
     def test_diversidade_forward_inclui_overstock(self) -> None:
         """Cota de polaridade: overstock entra mesmo com rupturas de maior NR."""
         sinais = [

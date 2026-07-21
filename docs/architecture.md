@@ -58,9 +58,10 @@ Input Guardrail
   |     DataShield Lite (ADR-0020 N1; N2/N3 backlog)
   |       -> Dominion CSV (tools_parametrizadas)
   |
-  +-- [B] PBI unificado (--fonte pbi)   [PoC 1.7a; codigo pendente]
-  |     Dominion PBI: catalogo DAX + MCP ExecuteQuery
-  |       -> state.resultados_pbi
+  +-- [B] PBI unificado (--fonte pbi)   [PoC 1.7a.2 implementado]
+  |     Dominion PBI: catalogo DAX + ExecuteQuery
+  |       (fixture CI ou REST com PBI_ACCESS_TOKEN)
+  |       -> state.resultados_pbi -> adaptador -> sinais
   |     (GenerateQuery FORA do batch)
   |
   v
@@ -93,11 +94,15 @@ Quando nenhum arquivo e fornecido, o pipeline usa dados simulados em memoria:
 Input Guardrail -> Dominion (dados simulados) -> Sinais -> Optimus -> ... -> Usuario
 ```
 
-### 3.2 Modo PBI / MCP (PoC; spec pronta, codigo em 1.7a.2)
+### 3.2 Modo PBI / MCP (PoC 1.7a.2)
+
+Modulos: `powerbi_catalog.py`, `powerbi_mcp.py`, `dominion_pbi.py`.
+CLI: `python main.py --modo nexus --fonte pbi` (exige catalogo +
+fixture ou token; nao usar junto com `--input`).
 
 ```
 Catalogo YAML (queries EVALUATE)
-  -> MCP ExecuteQuery(artifactId, dax)
+  -> ExecuteQuery(artifactId, dax)  [fixture | REST]
   -> resultados_pbi
   -> adaptador -> Sinais
   -> mesmo motor Optimus...PDF

@@ -503,11 +503,14 @@ adaptar_resultados_pbi_para_sinais(resultados_pbi, ...) -> list[Sinal]
   PoC: tipos minimos; Mondelez PBI = backlog (novo mapeamento)
 ```
 
-Backlog pos-PoC (nao implementar na 1.7a.2):
+PoC 1.7a.2: `powerbi_catalog.py`, `powerbi_mcp.py`, `dominion_pbi.py`
++ catalogo `catalogs/mondelez_s2r_v1.yaml`.
+
+Backlog pos-PoC:
 
 ```text
-catalogo_mondelez_s2r.yaml + mapeamento DOI/SO/SI
 connector HTTP Fabric standalone (cron)
+alinhar tipos sinal Agua <-> Mondelez
 ```
 
 Se entrada for invalida, a tool deve:

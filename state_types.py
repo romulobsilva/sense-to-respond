@@ -148,6 +148,11 @@ def criar_state_inicial(pergunta: str) -> Dict[str, Any]:
         "capacidades": [],
         "hitl_pendentes": [],
         "hitl_resolvidos": [],
+        "fonte_dados": None,
+        "pbi_artifact_id": None,
+        "pbi_catalog_id": None,
+        "resultados_pbi": None,
+        "catalog_execucao": None,
     }
 
 

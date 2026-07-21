@@ -525,18 +525,18 @@ PoC usa semantic model de teste (Agua). PBI Mondelez publicado:
 - [x] Atualizacao architecture / state / rules / testing (delta)
 - [x] Backlog pos-PoC sinalizado (secao abaixo)
 
-### 1.7a.2 Implementacao PoC (proximo codigo; ainda nao feito)
+### 1.7a.2 Implementacao PoC
 
-- [ ] `powerbi_mcp` connector fino (ExecuteQuery; auth fora do git)
-- [ ] Loader de catalogo YAML + validacao de contrato
-- [ ] `dominion_pbi`: executa catalogo -> `state["resultados_pbi"]`
-- [ ] Adaptador resultados_pbi -> `Sinal` (tipos PoC minimos)
-- [ ] Nexus/CLI: `--fonte pbi` vs `--input` CSV (mutuamente exclusivo)
-- [x] Env: `PBI_ARTIFACT_ID`, `PBI_CATALOG_PATH` (`.env.example` + local `.env`)
-- [ ] Reusar PNG/PDF com metadado `fonte_dados=pbi`
-- [ ] Testes com fixtures JSON (sem OAuth no CI)
-- [ ] Smoke manual autenticado -> PDF
-- [ ] Registrar em `agent.log.md` ao concluir codigo
+- [x] `powerbi_mcp` connector fino (fixture CI + REST `PBI_ACCESS_TOKEN`)
+- [x] Loader de catalogo YAML + validacao de contrato (`powerbi_catalog.py`)
+- [x] `dominion_pbi`: executa catalogo -> `state["resultados_pbi"]`
+- [x] Adaptador resultados_pbi -> `Sinal` (DOI + sellout PoC)
+- [x] Nexus/CLI: `--fonte pbi` vs `--input` CSV (mutuamente exclusivo)
+- [x] Env: `PBI_ARTIFACT_ID`, `PBI_CATALOG_PATH`, `PBI_FIXTURE_PATH`, `PBI_ACCESS_TOKEN`
+- [x] Reusar PNG/PDF com metadado `fonte_dados=pbi`
+- [x] Testes com fixtures JSON (`tests/test_dominion_pbi.py`, 9 passed)
+- [ ] Smoke manual autenticado (`PBI_ACCESS_TOKEN`) -> PDF
+- [x] Registrar em `agent.log.md` ao concluir codigo
 
 ### Backlog pos-PoC PBI (NAO fazer na primeira entrega)
 

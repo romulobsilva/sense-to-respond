@@ -127,6 +127,11 @@ def test_plot_listas_vazias_ainda_gera_arquivo(tmp_path: Path) -> None:
     )
     assert meta["ok"] is True
     assert meta["n_doi"] == 0
+    assert meta.get("paineis_sem_grafico") == [
+        "DOI / Estoque",
+        "Forward / Plano",
+        "Oportunidades",
+    ]
     assert Path(meta["caminho"]).is_file()
 
 

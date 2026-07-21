@@ -6,6 +6,36 @@
 
 ---
 
+## Sessao 23 - 2026-07-21 - Implementacao PoC 1.7a.2 Dominion PBI
+
+### Contexto
+- Usuario pediu implementar dual ingress conforme spec + testes
+- Catalogo Mondelez e env PBI_* ja existiam (sessao 22)
+
+### Decisoes
+- Connector: fixture CI + REST opcional (PBI_ACCESS_TOKEN)
+- Sem GenerateQuery no batch; adaptador DOI/sellout -> Sinal
+- CLI `--fonte pbi` exclusivo vs `--input`
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `powerbi_catalog.py` | loader/validacao YAML |
+| `powerbi_mcp.py` | Fixture + REST client |
+| `dominion_pbi.py` | execucao + adaptador |
+| `nexus.py` / `main.py` / `config.py` / `state_types.py` | integracao |
+| `tests/test_dominion_pbi.py` + fixture JSON | 9 testes |
+| docs architecture/planning/tex/agent.log | sync |
+
+### Testes
+- `pytest tests/test_dominion_pbi.py`: 9 passed (offline)
+
+### Proximos passos
+- Smoke manual com `PBI_ACCESS_TOKEN` -> PDF
+- Backlog pos-PoC restante (Popa, cron Fabric, etc.)
+
+---
+
 ## Sessao 22 - 2026-07-21 - Catalogo Mondelez PBI + env artifact_id
 
 ### Contexto

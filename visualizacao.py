@@ -151,25 +151,35 @@ def _resolver_caminho(
     return destino
 
 
+def _rotulo_eixo_impacto(fonte_dados: Optional[str]) -> str:
+    """Rotulo do eixo X conforme unidade do run (PBI = ton proxy)."""
+    if (fonte_dados or "").strip().lower() == "pbi":
+        return "Impacto priorizado (ton SO proxy)"
+    return "Impacto priorizado (NR)"
+
+
 def plotar_resumo_executivo(
     resumo: Mapping[str, Any],
     *,
     caminho_saida: Optional[Union[str, Path]] = None,
     diretorio_saida: Union[str, Path] = DIR_OUTPUT_DEFAULT,
     sessao_id: str = "sessao",
+    fonte_dados: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Gera PNG com tres blocos horizontais a partir do resumo executivo.
 
     Data-driven: plota exatamente os itens presentes em cada lista top_*.
     Variacoes de N ou do CSV de entrada refletem-se no grafico sem
-    alterar esta funcao.
+    alterar esta funcao. Blocos vazios exibem aviso explicito de que o
+    grafico daquele painel nao foi gerado (sem candidatos no top N).
 
     Args:
         resumo: Dict no formato de montar_resumo_executivo.
         caminho_saida: Arquivo PNG de destino (opcional).
         diretorio_saida: Pasta quando caminho_saida e None.
         sessao_id: Identificador da sessao (nome do arquivo / titulo).
+        fonte_dados: "pbi" | "csv" | "simulado" (rotulo do eixo).
 
     Returns:
         Metadados: ok, caminho, contagens por bloco, erro opcional.
@@ -187,6 +197,8 @@ def plotar_resumo_executivo(
         "n_forward": len(_as_item_list(resumo.get("top_forward"))),
         "n_oportunidades": len(_as_item_list(resumo.get("top_oportunidades"))),
     }
+    eixo_impacto = _rotulo_eixo_impacto(fonte_dados)
+    paineis_sem_grafico: List[str] = []
 
     try:
         fig, eixos = plt.subplots(
@@ -204,7 +216,16 @@ def plotar_resumo_executivo(
             itens = _as_item_list(resumo.get(chave))
             eixo.set_title(titulo, loc="left", fontsize=10)
             if not itens:
-                eixo.text(0.5, 0.5, "(sem itens)", ha="center", va="center")
+                paineis_sem_grafico.append(titulo)
+                eixo.text(
+                    0.5,
+                    0.5,
+                    "(sem itens: grafico nao gerado)",
+                    ha="center",
+                    va="center",
+                    fontsize=10,
+                    color="#555555",
+                )
                 eixo.set_xticks([])
                 eixo.set_yticks([])
                 continue
@@ -222,7 +243,7 @@ def plotar_resumo_executivo(
             eixo.set_yticks(posicoes)
             eixo.set_yticklabels(labels, fontsize=8)
             eixo.invert_yaxis()
-            eixo.set_xlabel("Impacto priorizado (NR)")
+            eixo.set_xlabel(eixo_impacto)
             eixo.grid(axis="x", linestyle=":", alpha=0.4)
 
         fig.savefig(destino, dpi=120, format="png")
@@ -244,5 +265,6 @@ def plotar_resumo_executivo(
         "caminho": str(destino),
         "sessao_id": sessao_id,
         "erro": None,
+        "paineis_sem_grafico": paineis_sem_grafico,
         **contagens,
     }
