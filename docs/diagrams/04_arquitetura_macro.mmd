@@ -1,0 +1,89 @@
+%% Sense to Respond - Arquitetura MACRO (implementado + extensao RAG)
+%% Fonte: docs/architecture.md | Atualizado: 2026-07-13
+%% Legenda: caixas solidas = implementado no MVP; tracejado = planejado
+
+flowchart TB
+    %% ---- ENTRADA ----
+    U[Usuario / Analista S and OE]
+    U -->|upload CSV ou XLSX + pergunta| IG
+
+    subgraph ENTRADA["1. Entrada e Guardrails"]
+        IG[Input Guardrail<br/>anti-injecao / tamanho]
+        HITL1[HITL schema<br/>humano confirma mapa]
+    end
+
+    %% ---- DATALOADER / DATASHIELD ----
+    subgraph DATALOADER["2. DataShield = DataLoader semantico"]
+        DS1[Ler arquivo e perfilar colunas]
+        DS2[Mapa semantico hibrido Nivel 1<br/>colunas -> schema canonico]
+        DS3[Dataset canonico organizado<br/>SO / SI / DOI / NR]
+        DS1 --> DS2 --> DS3
+    end
+
+    IG --> DS1
+    DS2 -->|baixa confianca ou ambiguo| HITL1
+    HITL1 --> DS3
+
+    %% ---- STATE ----
+    SB[(State Blackboard<br/>dados / sinais / proposicoes / auditoria)]
+
+    DS3 --> SB
+
+    %% ---- PIPELINE E2E ----
+    subgraph PIPE["3. Pipeline analitico end-to-end Nexus"]
+        DOM[Dominion<br/>tools deterministicas<br/>sellout / sellin / DOI / tendencia / forward]
+        SIG[Sinais estruturados]
+        OPT[Optimus<br/>proposicoes por impacto R$]
+        VAL[Validador deterministico<br/>SKU / evidencia / impacto / tipo]
+        CRIT[Critic LLM<br/>auditoria coerencia + confianca]
+        RETRY{Retry Optimus<br/>max 1x?}
+        FILA[Fila Nexus ranqueada<br/>+ flags revisao obrigatoria]
+        RES[Resumo executivo<br/>top DOI / forward / oportunidades]
+
+        DOM --> SIG --> OPT --> VAL
+        VAL -->|ok| CRIT
+        VAL -->|falhou| RETRY
+        CRIT -->|ok| FILA
+        CRIT -->|baixa confianca| RETRY
+        RETRY -->|sim| OPT
+        RETRY -->|nao| FILA
+        FILA --> RES
+    end
+
+    SB --> DOM
+    DOM --> SB
+    SIG --> SB
+    OPT --> SB
+    VAL --> SB
+    CRIT --> SB
+    FILA --> SB
+    RES --> SB
+
+    %% ---- SAIDA ----
+    subgraph SAIDA["4. Saida e decisao humana"]
+        OG[Output Guardrail<br/>disclaimer + citacoes]
+        HITL2[HITL final<br/>humano decide acao]
+        REC[Recomendacoes<br/>fila + resumo + narrativa LLM]
+        AUD[(Auditoria da sessao<br/>ultima_sessao.json)]
+    end
+
+    RES --> OG --> REC --> HITL2
+    SB --> AUD
+    REC --> AUD
+
+    HITL2 -->|sem Bridge ERP no MVP| U
+
+    %% ---- RAG FUTURO ----
+    subgraph RAG_FUTURO["5. RAG sobre documentacao gerada - PLANEJADO"]
+        IDX[Indexar docs + auditorias<br/>LaTeX / planning / sessoes]
+        Q[Consulta em linguagem natural<br/>ex.: o que o agente recomendou para Tang?]
+        ANS[Resposta com citacoes<br/>a documentacao / trilha]
+        IDX --> Q --> ANS
+    end
+
+    AUD -.->|alimentar base de conhecimento| IDX
+    U -.->|consultas posteriores| Q
+    ANS -.-> U
+
+    classDef planned stroke-dasharray: 5 5
+    class RAG_FUTURO,IDX,Q,ANS planned

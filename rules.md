@@ -204,11 +204,26 @@ Garantias obrigatorias:
 
 ### 7.2 MVP usa pipeline sequencial
 
-No MVP, o fluxo e sequencial e controlado:
+No MVP, o fluxo e sequencial e controlado. Com dual ingress (ADR-0025):
 
 ```text
-DataShield Lite -> Dominion -> Optimus -> Validador -> Critic -> Nexus
+[A] DataShield Lite -> Dominion CSV
+[B] Dominion PBI (catalogo DAX + MCP ExecuteQuery)   # PoC 1.7a
+        -> Optimus -> Validador -> Critic -> Nexus -> PDF
 ```
+
+Rotulos:
+
+* PBI unificado = caminho [B].
+* Planilha / schema cru = caminho [A] (+ Popa so no backlog pos-PoC).
+
+Regras do caminho PBI (batch):
+
+* So `ExecuteQuery` com DAX do catalogo versionado.
+* Proibido depender de `GenerateQuery` no relatorio.
+* Troca Mondelez futura = novo YAML + `PBI_ARTIFACT_ID` (backlog).
+* Nao hardcodar tabelas do modelo de teste (Agua) no Nexus.
+* Nao reimplementar medidas DAX em Python como fallback padrao.
 
 Nao implementar no MVP sem atualizacao previa da spec:
 
@@ -217,7 +232,8 @@ Nao implementar no MVP sem atualizacao previa da spec:
 * agentes paralelos autonomos;
 * conversa livre entre agentes em linguagem natural;
 * execucao automatica em ERP/WMS/TMS;
-* Bridge operacional.
+* Bridge operacional;
+* itens do **Backlog pos-PoC PBI** em `planning.md` (antes da PoC 1.7a.2).
 
 ### 7.3 State blackboard
 
@@ -617,6 +633,12 @@ Se alterou guardrail:
 
 * testar caso permitido;
 * testar caso bloqueado.
+
+Se alterou Dual Ingress / PBI MCP (ADR-0025):
+* atualizar `docs/contracts/powerbi_catalog_contract.md` se o YAML mudar;
+* nao marcar backlog pos-PoC como feito na PoC 1.7a.2;
+* nao commitar tokens/auth de `.cursor/mcp.json`;
+* fixtures JSON para CI sem OAuth.
 
 Se alterou DataShield:
 

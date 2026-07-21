@@ -96,6 +96,8 @@ A decisao foi descartada e nao deve guiar implementacao.
 | ADR-0021 | LLM Pode Gerar ETL mas Nao Metrica                       | Aceito   | Fronteira: ETL permitido, calculo de negocio proibido  |
 | ADR-0022 | HITL via Protocolo Abstrato com Streamlit                 | Aceito   | InterfaceHITL plugavel, demo com Streamlit             |
 | ADR-0023 | Comunicacao Pipeline-UI via JSON                          | Aceito   | Arquivos JSON em approvals/ para HITL assincrono       |
+| ADR-0024 | Portabilidade Multi-Dominio                               | Aceito   | Thresholds, NR, schema, forward configuraveis          |
+| ADR-0025 | Dois Caminhos Planilha vs PBI/MCP                         | Aceito   | Catalogo DAX; PoC Agua; Mondelez PBI no backlog        |
 
 ---
 

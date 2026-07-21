@@ -677,3 +677,9 @@ Evitar:
 ```text
 O Dominion sempre executa todas as analises independentemente dos dados.
 ```
+
+### Addendum 2026-07-21 (ADR-0025)
+
+No caminho PBI, as "capacidades" equivalem as **queries do catalogo DAX**
+disponiveis e com `ok` em `catalog_execucao`, nao apenas colunas do CSV.
+Catalogo Mondelez S&OE no PBI = backlog pos-PoC.

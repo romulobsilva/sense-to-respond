@@ -6,6 +6,93 @@
 
 ---
 
+## Sessao 22 - 2026-07-21 - Catalogo Mondelez PBI + env artifact_id
+
+### Contexto
+- MCP Power BI autenticado; PBIX Mondelez_S2R publicado
+- Usuario pediu PBI_ARTIFACT_ID + catalogo YAML no projeto
+
+### Decisoes
+- Catalogo versionado em `catalogs/mondelez_s2r_v1.yaml` (Q1-Q3)
+- Env: `PBI_ARTIFACT_ID` + `PBI_CATALOG_PATH` (.env local + .env.example)
+- Codigo dominion_pbi / CLI `--fonte pbi` permanece em 1.7a.2 (nao feito)
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `catalogs/mondelez_s2r_v1.yaml` | novo catalogo DAX |
+| `.env.example` / `.env` | PBI_* |
+| `docs/planning.md` | env + backlog catalogo [x] |
+| `docs/contracts/powerbi_catalog_contract.md` | nota Mondelez |
+
+### Testes
+- MCP ExecuteQuery Q1 + Q3 OK no artifact `8d81650c-...`
+- Q2 (top alertas) validado em sessao anterior
+
+### Proximos passos
+- Implementar 1.7a.2 (connector + dominion_pbi + CLI)
+
+---
+
+## Sessao 21 - 2026-07-21 - Spec Dual Ingress PBI/MCP (ADR-0025)
+
+### Contexto
+- Usuario pediu atualizacoes de arquitetura/regras/ADRs para PoC
+  dual path (planilha vs PBI), com backlog pos-PoC sinalizado
+- PBI Mondelez sera publicado depois (troca de catalogo)
+
+### Decisoes
+- ADR-0025 Aceito: batch = catalogo DAX + ExecuteQuery
+- PoC = modelo Agua; Mondelez PBI = backlog (novo YAML + artifact_id)
+- Codigo PoC NAO nesta sessao (planning 1.7a.2 unchecked)
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `docs/adr/0025-*.md` | nova ADR |
+| `docs/contracts/powerbi_catalog_contract.md` | contrato |
+| `docs/contracts/examples/agua_io_catalog.example.yaml` | exemplo |
+| `docs/planning.md` | Fase 1.7a + backlog pos-PoC |
+| `docs/architecture.md` / state / tool / rules / testing | delta |
+| ADR 0001/0013/0019 addenda | ponteiros |
+| `docs/sense_to_respond_modelagem.tex` | Proximos Passos |
+| `.cursor/rules/spec-driven-dev.mdc` | invariantes PBI |
+
+### Testes
+- Spec only; sem codigo PoC
+
+### Proximos passos
+- Implementar 1.7a.2 (connector + dominion_pbi + CLI)
+- Nao puxar itens do backlog pos-PoC na primeira entrega
+
+---
+
+## Sessao 20 - 2026-07-20 - Revisao notacao LaTeX modelagem
+
+### Contexto
+- Usuario pediu revisar se todos os termos das equacoes/limiares
+  estavam definidos em `docs/sense_to_respond_modelagem.tex`
+
+### Decisoes
+- Expandir tabela de notacao + subsecao de aliases curto <-> Theta
+- Unificar simbolos (tau_d/tau_m, n_p, N_d/N_f/N_o, tau_c em Settings)
+- Esclarecer media temporal DOI no grupo K_1 (SKU)
+- Corrigir TOP_N_* e remover nota obsoleta sobre w nao propagado
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `docs/sense_to_respond_modelagem.tex` | notacao, aliases, thresholds |
+| `docs/sense_to_respond_modelagem.pdf` | recompilado |
+
+### Testes
+- `pdflatex` OK (80 paginas)
+
+### Proximos passos
+- Opcional: substituir usos locais de Theta_{texto} por simbolos curtos
+
+---
+
 ## Sessao 19 - 2026-07-20 - Relatorio analista HTML->PDF (1.6.7)
 
 ### Contexto

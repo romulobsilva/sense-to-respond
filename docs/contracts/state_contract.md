@@ -85,6 +85,30 @@ Estas regras nao podem ser quebradas sem mudanca previa de arquitetura.
 | `hitl_pendentes` | `list[PedidoAprovacao]` | Nexus/DataShield | HITL/UI | Pedidos de aprovacao pendentes |
 | `hitl_resolvidos` | `list[PedidoAprovacao]` | HITL/UI | Nexus/Auditoria | Decisoes humanas com timestamp e autor |
 
+## 4c. Campos Dual Ingress / PBI MCP (ADR-0025) -- PoC
+
+| Campo | Tipo esperado | Escrito por | Lido por | Observacao |
+| --- | --- | --- | --- | --- |
+| `fonte_dados` | `str` | Nexus | Todos | `csv` \| `pbi` \| `simulado` |
+| `pbi_artifact_id` | `str` ou `None` | Nexus/config | Dominion PBI | GUID semantic model |
+| `pbi_catalog_id` | `str` ou `None` | Dominion PBI | Auditoria | Id do YAML |
+| `resultados_pbi` | `dict` ou `None` | Dominion PBI | Sinais | `query_id` -> {columns, rows, meta} |
+| `catalog_execucao` | `list[dict]` ou `None` | Dominion PBI | Auditoria | Status por query (sem dump completo) |
+
+Regras PoC:
+
+* Se `fonte_dados == "pbi"`: `dataset_canonico` pode ser `None`; DataShield
+  nao e obrigatorio.
+* Se `fonte_dados == "csv"`: fluxo DataShield atual; campos PBI ficam `None`.
+* Nao serializar `resultados_pbi` completo em auditoria se volume alto
+  (ADR-0012); preferir `catalog_execucao` + amostra.
+
+Backlog pos-PoC (nao exigir no state ate la):
+
+* Persistencia Popa / dataset versionado
+* Campos de entrega omnichannel / feedback
+* Catalogo Mondelez (mesmo shape; outro YAML)
+
 ---
 
 ## 5. Tipos conceituais

@@ -1,0 +1,99 @@
+# Example catalog for PoC (Agua model). ASCII only.
+# Copy/adapt to catalogs/ when implementing code (planning 1.7a).
+# Mondelez S&OE catalog is BACKLOG (post-PoC) - do not treat this file as Mondelez.
+
+catalog_id: agua_io_v1
+display_name: IO Monitoramento Agua MCP-test
+artifact_id_env: PBI_ARTIFACT_ID
+artifact_id_default: null
+domain: agua_io
+notes: >
+  PoC dual-ingress only. Swap to Mondelez later via new YAML + artifact_id.
+  Do not hardcode GDPA table names inside Nexus.
+
+queries:
+  - query_id: Q1_kpis
+    description: Global sales KPIs, stock and policy breach counts
+    max_rows: 10
+    expected_columns:
+      - Vnd Real
+      - Vnd Plan
+      - Gap %
+      - Estoque Centro
+      - Abaixo Pol Min
+      - Estoque Zero
+    grain: model
+    uom:
+      Vnd Real: { unit: un, scope: gdpa }
+      Vnd Plan: { unit: un, scope: gdpa_plan_ajustado }
+      Gap %: { unit: pct, scope: vs_plan_ajustado }
+      Estoque Centro: { unit: un, scope: centro }
+    maps_to_signal_types: []
+    dax: |
+      EVALUATE ROW(
+        "Vnd Real", SUM('GDPA'[Vnd. Real]),
+        "Vnd Plan", SUM('GDPA'[Vnd. Prev. Ajustada]),
+        "Gap %", DIVIDE(
+          SUM('GDPA'[Vnd. Real]) - SUM('GDPA'[Vnd. Prev. Ajustada]),
+          SUM('GDPA'[Vnd. Prev. Ajustada])
+        ) * 100,
+        "Estoque Centro", SUM('GDPA'[Estoque Real Centro]),
+        "Abaixo Pol Min", CALCULATE(
+          COUNTROWS('GDPA'),
+          FILTER('GDPA', 'GDPA'[Estoque Real Centro] < 'GDPA'[Pol. Min])
+        ),
+        "Estoque Zero", CALCULATE(
+          COUNTROWS('GDPA'),
+          FILTER('GDPA', 'GDPA'[Estoque Real Centro] <= 0)
+        )
+      )
+
+  - query_id: Q2_top_sku
+    description: Top 3 SKUs by actual sales
+    max_rows: 10
+    expected_columns:
+      - GDPA Codigo
+      - GDPA Descricao SKU
+      - VndReal
+    grain: sku
+    uom:
+      VndReal: { unit: un, scope: gdpa }
+    maps_to_signal_types: []
+    dax: |
+      EVALUATE TOPN(
+        3,
+        SUMMARIZECOLUMNS(
+          'GDPA'[Codigo],
+          'GDPA'[Descricao SKU],
+          "VndReal", SUM('GDPA'[Vnd. Real])
+        ),
+        [VndReal],
+        DESC
+      )
+
+  - query_id: Q3_gap_uf
+    description: Top 3 UFs with worst gap vs plan
+    max_rows: 10
+    expected_columns:
+      - GDPA UF
+      - GapPct
+      - VndReal
+    grain: uf
+    uom:
+      GapPct: { unit: pct, scope: vs_plan_ajustado }
+      VndReal: { unit: un, scope: gdpa }
+    maps_to_signal_types: []
+    dax: |
+      EVALUATE TOPN(
+        3,
+        SUMMARIZECOLUMNS(
+          'GDPA'[UF],
+          "GapPct", DIVIDE(
+            SUM('GDPA'[Vnd. Real]) - SUM('GDPA'[Vnd. Prev. Ajustada]),
+            SUM('GDPA'[Vnd. Prev. Ajustada])
+          ) * 100,
+          "VndReal", SUM('GDPA'[Vnd. Real])
+        ),
+        [GapPct],
+        ASC
+      )

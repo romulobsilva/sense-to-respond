@@ -881,6 +881,31 @@ Schema com campos faltantes gera diagnostico
 
 ---
 
+## 13d. Testes Dual Ingress / PBI MCP (ADR-0025)
+
+### PoC (quando 1.7a.2 for implementado)
+
+```text
+carregar_catalogo_dax valida YAML exemplo
+executar_catalogo_pbi com fixture JSON (sem rede/OAuth no CI)
+adaptador resultados_pbi -> sinais (tipos PoC)
+Nexus --fonte pbi nao exige dataset_canonico
+Nexus --input csv nao preenche resultados_pbi
+auditoria registra catalog_execucao sem dump completo
+```
+
+Smoke manual (nao CI): MCP autenticado + artifact_id + PDF.
+
+### Backlog pos-PoC (nao exigir agora)
+
+```text
+catalogo Mondelez S&OE contra modelo publicado
+CI live contra Fabric (auth/custo)
+parity CSV Mondelez vs PBI Mondelez (mesmos KPIs)
+```
+
+---
+
 ## 14. Testes de seguranca
 
 Testar:

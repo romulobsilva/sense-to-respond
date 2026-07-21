@@ -427,6 +427,14 @@ Esta ADR nao nega a visao multi-agente da solucao.
 
 Ela apenas define que, no MVP tecnico, a implementacao deve ser sequencial, governada por harness e auditavel.
 
+### Addendum 2026-07-21 (ADR-0025)
+
+DataShield Lite e **condicional** ao ingresso planilha. O caminho PBI
+unificado (catalogo DAX + MCP) tambem e sequencial e desemboca no mesmo
+motor Optimus/Critic/fila/PDF. Nao altera a proibicao de MOE/consenso
+no MVP. Itens pos-PoC (Popa, omnichannel, catalogo Mondelez PBI) ficam
+no backlog de `planning.md` Fase 1.7a.
+
 A linguagem recomendada para documentacao tecnica e:
 
 ```text

@@ -208,3 +208,10 @@ ADR-0018 - DataShield Lite nao substitui governanca
 
 O CSV Mondelez tem colunas com nomes explicitos em ingles (SellOut_Actual_Ton, DOI_Actual_Days).
 O mapeamento semantico para este dataset especifico deve ter confianca alta (>0.90).
+
+### Addendum 2026-07-21 (ADR-0025)
+
+Esta ADR cobre o ingresso **CSV** Mondelez. O semantic model Power BI
+Mondelez (quando publicado) entra pelo caminho PBI/MCP com **novo
+catalogo DAX**, sem invalidar o CSV. Ate la, a PoC usa outro modelo
+(Agua) so para validar o fio MCP. Ver backlog pos-PoC em planning 1.7a.

@@ -49,68 +49,40 @@ IA = LLM + Harness
 
 ## 3. Pipeline MVP
 
+Dois ingressos ate o mesmo motor de insights (ADR-0025):
+
 ```
-Input Guardrail (anti-injecao, tamanho)
+Input Guardrail
+  |
+  +-- [A] Planilha / schema cru (--input)
+  |     DataShield Lite (ADR-0020 N1; N2/N3 backlog)
+  |       -> Dominion CSV (tools_parametrizadas)
+  |
+  +-- [B] PBI unificado (--fonte pbi)   [PoC 1.7a; codigo pendente]
+  |     Dominion PBI: catalogo DAX + MCP ExecuteQuery
+  |       -> state.resultados_pbi
+  |     (GenerateQuery FORA do batch)
   |
   v
-DataShield Lite (3 niveis de adaptacao - ADR-0020)
-  |-- Nivel 1: mapeamento semantico (LLM infere, humano confirma)
-  |-- Nivel 2: ETL gerado (LLM gera script, humano revisa, sandbox executa)
-  |-- Nivel 3: diagnostico de incompatibilidade (humano decide)
-  |-- HITL: aprovacao via protocolo abstrato (ADR-0022)
-  |
-  v
-Dominion (tools deterministicas parametrizadas)
-  |-- detectar_capacidades(mapa)
-  |-- analisar_sellout(df, mapa)
-  |-- analisar_sellin(df, mapa)
-  |-- analisar_doi(df, mapa)
-  |-- (roda apenas analises compativeis com dados disponiveis - ADR-0013)
-  |
-  v
-Sinais estruturados (desvio_sellout, desvio_sellin, doi_fora_politica, etc.)
-  |
-  v
-Optimus (proposicoes deterministicas por impacto financeiro)
-  |
-  v
-Validador deterministico
-  |-- SKU existe nos sinais?
-  |-- Evidencia SIG-xxx existe?
-  |-- impacto_financeiro == impacto_calculado?
-  |-- tipo na whitelist MVP?
-  |
-  v
-Critic LLM (1 chamada, audita coerencia)
-  |-- Proposicao contradiz sinal?
-  |-- Conclusao exagerada?
-  |-- Retorna confianca 0-1
-  |
-  v
-Retry Optimus (max 1x se validador ou critic falhar)
-  |
-  v
-Fila Nexus (ranqueada por impacto R$ e urgencia horas)
-  |-- Flag REVISAO OBRIGATORIA se confianca < limiar
-  |-- HITL: aprovacao via Streamlit ou terminal (ADR-0022)
-  |
-  v
-Resumo executivo estratificado (top N DOI / forward / oportunidades)
-  |
-  v
-Visualizacao PNG (deterministica; plota o top N do run)
-  |-- output/recomendacoes_<sessao_id>.png
-  |
-  v
-Output Guardrail (disclaimer + citacoes)
-  |
-  v
-Relatorio analista HTML -> PDF (WeasyPrint)
-  |-- output/relatorio_<sessao_id>.html
-  |-- output/relatorio_<sessao_id>.pdf
-  |
-  v
-Usuario decide (sem Bridge/ERP no MVP)
+Sinais -> Optimus -> Validador -> Critic -> Fila
+  -> Resumo -> PNG -> Output Guardrail -> Relatorio PDF
+  -> Usuario decide (sem Bridge/ERP no MVP)
+```
+
+Rotulos de produto:
+
+* **PBI unificado** = Dominion via MCP: catalogo DAX (`ExecuteQuery`).
+* **Planilha** = DataShield + HITL (+ Popa no backlog pos-PoC).
+
+Troca futura Mondelez PBI = novo `PBI_CATALOG_PATH` + `PBI_ARTIFACT_ID`
+(mesmo connector). Ver planning **Backlog pos-PoC PBI**.
+
+### 3.0 Detalhe caminho planilha (implementado)
+
+```
+DataShield Lite (3 niveis - N1 ok; N2/N3 planejado)
+  -> Dominion (analisar_sellout/sellin/doi/...)
+  -> Sinais (desvio_sellout, doi_fora_politica, ...)
 ```
 
 ### 3.1 Modo legado (sem DataShield)
@@ -119,6 +91,16 @@ Quando nenhum arquivo e fornecido, o pipeline usa dados simulados em memoria:
 
 ```
 Input Guardrail -> Dominion (dados simulados) -> Sinais -> Optimus -> ... -> Usuario
+```
+
+### 3.2 Modo PBI / MCP (PoC; spec pronta, codigo em 1.7a.2)
+
+```
+Catalogo YAML (queries EVALUATE)
+  -> MCP ExecuteQuery(artifactId, dax)
+  -> resultados_pbi
+  -> adaptador -> Sinais
+  -> mesmo motor Optimus...PDF
 ```
 
 ## 4. State compartilhado (blackboard)
@@ -137,6 +119,11 @@ Sem conversa livre entre LLMs.
 | `nivel_adaptacao` | DataShield | Nexus, Auditoria |
 | `script_etl_aprovado` | DataShield/HITL | Dominion |
 | `resultados` | Dominion (tools) | Sinais, Optimus |
+| `fonte_dados` | Nexus | Todos | `csv` / `pbi` / `simulado` (ADR-0025) |
+| `resultados_pbi` | Dominion PBI | Sinais | Saida do catalogo DAX (PoC) |
+| `pbi_catalog_id` | Dominion PBI | Auditoria | Id do YAML de catalogo |
+| `pbi_artifact_id` | Nexus/config | Dominion PBI | GUID do semantic model |
+| `catalog_execucao` | Dominion PBI | Auditoria | Meta por query_id (ok/erro/n_rows) |
 | `sinais[]` | Sinais | Optimus, Critic |
 | `proposicoes[]` | Optimus | Validador, Critic, Fila |
 | `validacao` | Validador | Nexus |
@@ -297,9 +284,11 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 | DataShield Lite Nivel 1 (hibrido) | Implementado | Fase 1.5.2 | ADR-0005/0020 |
 | DataShield Lite (3 niveis) | Parcial (N1 ok; N2/N3 planejado) | Fase 1.5 | ADR-0020 |
 | HITL Streamlit (demo EY) | Planejado | Fase 1.5c | ADR-0022 |
-| Tools parametrizadas Mondelez | Planejado | Fase 1.5b | ADR-0019 |
+| Tools parametrizadas Mondelez | Implementado (CSV) | Fase 1.5b | ADR-0019 |
+| Dual ingress PBI/MCP (catalogo DAX) | Spec pronta; codigo PoC pendente | Fase 1.7a | ADR-0025 |
+| Catalogo DAX Mondelez (PBI publicado) | Backlog pos-PoC | pos-1.7a | ADR-0025 |
 | Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |
-| Dominion expandido (DOI, canal) | Planejado | Fase 1.6 | - |
+| Dominion expandido (DOI, canal) | Parcial / evolutivo | Fase 1.6 | - |
 | Kedro pipelines | Planejado | Fase 2 | - |
 | Microsoft Agent Framework | Planejado | Fase 2 | - |
 | Bridge (execucao ERP/WMS) | Planejado | Fase 4 | ADR-0016 |
@@ -316,7 +305,7 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 
 ## 10. Decisoes arquiteturais registradas
 
-Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0023). Resumo:
+Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0025). Resumo:
 
 | ADR | Decisao | Motivo |
 |---|---|---|
@@ -344,12 +333,13 @@ Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0023). Resumo:
 | 0022 | HITL via protocolo abstrato com Streamlit | InterfaceHITL plugavel, demo EY |
 | 0023 | Comunicacao pipeline-UI via JSON | Arquivos JSON em approvals/ |
 | 0024 | Portabilidade multi-dominio | Thresholds, NR, schema, forward configuraveis |
+| 0025 | Dois caminhos planilha vs PBI/MCP | Catalogo DAX; swap Mondelez = novo YAML |
 
 ## 11. Documentos de referencia
 
 | Documento | Caminho | Descricao |
 |---|---|---|
-| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0024) |
+| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0025) |
 | Contratos | `docs/contracts/` | state_contract.md, tool_contract.md |
 | Prompts | `docs/prompts.md` | Contratos de prompts LLM |
 | Testes | `docs/testing.md` | Guia de testes e invariantes |

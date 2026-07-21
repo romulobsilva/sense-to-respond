@@ -264,40 +264,123 @@ Uma execu\c{c}\~ao t\'ipica do pipeline segue o ciclo:
 
 \section{Nota\c{c}\~ao}
 
-Ao longo deste documento, utilizamos a seguinte nota\c{c}\~ao:
+Ao longo deste documento, utilizamos a seguinte nota\c{c}\~ao.
+Quando um s\'imbolo curto e um longo denotam o mesmo limiar
+(ex.: $\tau_d \equiv \Theta_{\text{limiar\_desvio}}$), a equival\^encia
+\'e fixada na Subse\c{c}\~ao~\ref{subsec:aliases-limiares}.
 
-\begin{longtable}{ll}
+\begin{longtable}{lp{9.5cm}}
   \toprule
   \textbf{S\'imbolo} & \textbf{Significado} \\
   \midrule
-  $D$ & Conjunto de dados (dataset) \\
-  $d \in D$ & Uma observa\c{c}\~ao (linha) do dataset \\
+  \endfirsthead
+  \toprule
+  \textbf{S\'imbolo} & \textbf{Significado} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  % --- Dados e agregacao ---
+  $D$ & Conjunto de dados (dataset); $d \in D$ \'e uma linha \\
   $n = |D|$ & N\'umero total de observa\c{c}\~oes \\
-  $\mathcal{K}$ & Conjunto de dimens\~oes $\{$SKU, Pa\'is, Canal, Categoria, Marca$\}$ \\
-  $k \in \mathcal{K}$ & Uma combina\c{c}\~ao espec\'ifica de dimens\~oes (grupo) \\
-  $g = |\mathcal{K}|$ & N\'umero de grupos ap\'os agrega\c{c}\~ao \\
-  $x^{\text{plan}}_k$ & Valor planejado para o grupo $k$ (toneladas ou dias) \\
-  $x^{\text{act}}_k$ & Valor realizado (actual) para o grupo $k$ \\
-  $\Delta_k$ & Desvio percentual do grupo $k$: $\frac{x^{\text{act}}_k - x^{\text{plan}}_k}{x^{\text{plan}}_k} \times 100$ \\
-  $\text{NR}_k$ & Net Revenue (receita l\'iquida USD) do grupo $k$ \\
-  $I_k$ & Impacto financeiro estimado do grupo $k$ \\
-  $\sigma$ & Sinal estruturado (evid\^encia num\'erica) \\
-  $\Sigma$ & Conjunto de todos os sinais da sess\~ao \\
-  $\pi$ & Proposi\c{c}\~ao de a\c{c}\~ao (recomenda\c{c}\~ao operacional) \\
-  $\Pi$ & Conjunto de todas as proposi\c{c}\~oes \\
-  $\fila$ & Fila Nexus priorizada (human-in-the-loop) \\
-  $\state$ & State blackboard compartilhado \\
-  $\Theta$ & Vetor de thresholds configur\'aveis (DomainThresholds) \\
-  $\tau$ & Threshold individual (limiar de decis\~ao) \\
-  $\tool$ & Tool determin\'istica (fun\c{c}\~ao Python/pandas) \\
-  $c$ & Confian\c{c}a do Critic $\in [0, 1]$ \\
-  $c_{\text{DS}}$ & Confian\c{c}a do mapa DataShield $\in [0, 1]$ \\
-  $\tau_{\text{DS}}$ & Limiar do confidence gate DataShield (default 0.6) \\
-  $u$ & Urg\^encia em horas (48, 120 ou 336) \\
-  $t_c$ & Data de corte (\'ultimo dia com dados realizados) \\
-  $w$ & Tamanho da janela temporal em dias \\
+  $\mathcal{K}_1$ & Grupos N\'ivel~1:
+    SKU $\times$ Pa\'is $\times$ Canal $\times$ Categoria $\times$ Marca \\
+  $\mathcal{K}_3$ & Grupos N\'ivel~3: Categoria $\times$ Pa\'is $\times$ Canal \\
+  $k$ & Um grupo em $\mathcal{K}_1$ ou $\mathcal{K}_3$ (nunca ``m\'edia entre SKUs''
+    quando $k \in \mathcal{K}_1$) \\
+  $x^{\text{plan}}_k$, $x^{\text{act}}_k$ & Plan/actual do grupo $k$ (toneladas ou dias) \\
+  $\overline{\text{DOI}}^{\text{plan}}_k$, $\overline{\text{DOI}}^{\text{act}}_k$ &
+    M\'edia \textbf{temporal} do DOI nas linhas do grupo $k$ (N\'ivel~1 = um SKU) \\
+  $g_k$ & Gap de DOI: $\overline{\text{DOI}}^{\text{act}}_k - \overline{\text{DOI}}^{\text{plan}}_k$ \\
+  $\Delta_k$ & Desvio percentual plan/actual do grupo $k$ \\
+  $\text{NR}_k$ & Net Revenue (USD) agregado do grupo $k$ (soma na janela) \\
+  $I^{\text{NR}}_k$, $I^{\text{DOI}}_k$ & Impacto NR (SO/SI) e impacto DOI do grupo $k$ \\
+  $W_{\text{recente}}$, $W_{\text{anterior}}$ & Janelas temporais de largura $w$ \\
+  $\text{div}_k$ & Diverg\^encia\% forward (ritmo plan fwd vs actual recente) \\
+  $a_k$ & Acelera\c{c}\~ao do SO (pp) entre metades da janela \\
+  $n^{\text{pers}}_k$ & Meses consecutivos com mesmo sinal de desvio \\
+  $\overline{\Delta}^{\text{pers}}_k$ & M\'edia do desvio\% nos meses persistentes \\
+  % --- Sinais / proposicoes / fila ---
+  $\sigma$, $\Sigma$ & Sinal; conjunto de sinais da sess\~ao \\
+  $\pi$, $\Pi$ & Proposi\c{c}\~ao; conjunto de proposi\c{c}\~oes \\
+  $I_f$, $I_c$ & Impacto financeiro e impacto calculado ($I_f = I_c$ por invariante) \\
+  $I^{\text{prio}}(\pi)$ & Score de ordena\c{c}\~ao: $I_f(\pi)\cdot w(\pi.\tau)$ \\
+  $w(\tau)$ & Fun\c{c}\~ao peso por \textbf{tipo} de proposi\c{c}\~ao (n\~ao confundir com $w$ dias) \\
+  $u$ & Urg\^encia em horas ($48$, $120$ ou $336$) \\
+  $\epsilon$ & Toler\^ancia de coer\^encia $|I_f-I_c|\leq\epsilon$ (default $0.01$) \\
+  $\fila$, $q_i$ & Fila Nexus; item $(\pi_i, p_i, r_i, m_i)$ \\
+  $p_i$, $r_i$, $m_i$ & Prioridade, flag revis\~ao obrigat\'oria, motivo \\
+  $\tau_I$ & Limiar de impacto alto na fila (default $10\,000$; fixo em c\'odigo) \\
+  $\mathcal{W}_{\text{MVP}}$ & Whitelist de tipos de proposi\c{c}\~ao \\
+  $\mathcal{D}$, $\mathcal{F}$, $\mathcal{O}$ & Subconjuntos de $\Pi$ (DOI, forward, oportunidade)
+    no resumo executivo \\
+  $N_d$, $N_f$, $N_o$ & Top-$N$ DOI / forward / oportunidades \\
+  % --- State / pipeline ---
+  $\state$ & State blackboard; $\mathcal{F}_{\text{campos}}$ = campos permitidos do contrato \\
+  $\mathcal{R}$ & Dicion\'ario de resultados do Dominion \\
+  $\mathcal{C}$ & Conjunto de capacidades detectadas (sellout, sellin, doi, \ldots) \\
+  $\mathcal{E}$ & Extens\~oes de arquivo suportadas \\
+  $M$, $M_{\text{det}}$, $M_{\text{llm}}$ & Mapa sem\^antico; partes determin\'istica e LLM \\
+  $c_{\text{DS}}$, $\tau_{\text{DS}}$ & Confian\c{c}a do mapa DataShield; limiar gate (default $0.6$) \\
+  $c$, $\tau_c$ & Confian\c{c}a do Critic; limiar em \texttt{Settings}
+    (\texttt{LIMIAR\_CONFIANCA\_CRITIC}, default $0.7$) --- \textbf{n\~ao} faz parte de $\Theta$ \\
+  $r_{\max}$ & M\'aximo de retries do Optimus (\texttt{MAX\_OPTIMUS\_RETRIES}) \\
+  $G_{\text{in}}$, $G_{\text{out}}$ & Input / output guardrail \\
+  $t$, $t'$ & Texto narrativo bruto e p\'os-guardrail \\
+  $\tool$ & Tool determin\'istica (Python/pandas) \\
+  $t_c$ & Data de corte (\'ultimo dia com actuals segundo $\mu$) \\
+  $w$ & Janela temporal em dias ($\Theta.\texttt{janela\_recente\_dias}$) \\
+  $\Theta$ & Vetor \texttt{DomainThresholds} (limiares de dom\'inio S\&OE) \\
+  $\mu$ & Forward marker ($\texttt{nan}$ ou $\texttt{zero}$) \\
   \bottomrule
 \end{longtable}
+
+\subsection{Aliases de limiares de dom\'inio}
+\label{subsec:aliases-limiares}
+
+Os textos e f\'ormulas usam s\'imbolos \textbf{curtos}. A tabela do Cap\'itulo
+de Thresholds e o c\'odigo usam nomes de ambiente / campos de $\Theta$.
+Equival\^encias can\'onicas (defaults Mondelez):
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  \textbf{Curto} & \textbf{Campo / $\Theta$} & \textbf{Default} \\
+  \midrule
+  $\tau_r$ / $\tau_{\text{rupt}}$ & $\Theta.\texttt{doi\_ruptura\_dias}$ & 15 \\
+  $\tau_o$ / $\tau_{\text{over}}$ & $\Theta.\texttt{doi\_overstock\_dias}$ & 40 \\
+  $\tau_d$ / $\tau_m$ & $\Theta.\texttt{limiar\_desvio\_pct}$ & 5\% \\
+  $\tau_h$ & $\Theta.\texttt{limiar\_desvio\_severo\_pct}$ & 10\% \\
+  $\gamma_m$ / $\gamma_{\text{media}}$ & $\Theta.\texttt{limiar\_doi\_gap\_media}$ & 7\,d \\
+  $\gamma_h$ / $\gamma_{\text{alta}}$ & $\Theta.\texttt{limiar\_doi\_gap\_alta}$ & 15\,d \\
+  $\tau_e$ & $\Theta.\texttt{limiar\_tendencia\_estavel\_pct}$ & 3\% \\
+  $\tau_f$ & $\Theta.\texttt{limiar\_premissa\_furada\_pct}$ & 15\% \\
+  $\tau_a$ & $\Theta.\texttt{limiar\_aceleracao\_pct}$ & 5\,pp \\
+  $n_p$ & $\Theta.\texttt{limiar\_desvio\_persistente\_meses}$ & 3 \\
+  $w$ & $\Theta.\texttt{janela\_recente\_dias}$ & 30 \\
+  $\mu$ & $\Theta.\texttt{forward\_marker}$ & \texttt{nan} \\
+  $w_q$, $w_o$, $w_p$ & pesos $w(\tau)$ via $\Theta.\texttt{peso\_*}$ & 1.5 / 1.4 / 1.1 \\
+  $N_d$, $N_f$, $N_o$ & $\Theta.\texttt{top\_n\_*}$ & 5 / 5 / 5 \\
+  $I_{\min}$, $\Delta_{\min}$ & filtro ru\'ido persistente & 100 / 5\% \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\begin{observacao}
+  $\tau_d$ (filtro Optimus / forward) e $\tau_m$ (faixa de severidade
+  ``m\'edia'' SO/SI) s\~ao o \textbf{mesmo} valor de $\Theta$:
+  $\texttt{limiar\_desvio\_pct}$. Mant\'em-se duas letras por legibilidade
+  nas f\'ormulas locais.
+\end{observacao}
+
+\begin{observacao}
+  N\~ao confundir: (i)~$w$ = dias de janela; (ii)~$w(\tau)$ = peso de
+  ordena\c{c}\~ao por tipo; (iii)~$w_q,w_o,w_p$ = constantes desse peso;
+  (iv)~$\mathcal{F}_{\text{campos}}$ = campos do state (contrato);
+  (v)~$\mathcal{F}\subset\Pi$ = proposi\c{c}\~oes forward no resumo executivo.
+\end{observacao}
 
 \section{Conven\c{c}\~oes de Leitura}
 
@@ -451,11 +534,14 @@ compartilhada, sem mensagens diretas entre si.
   O state $\state$ \'e um dicion\'ario tipado compartilhado entre todos os
   agentes. Formalmente:
   \[
-    \state = \{(\text{campo}_i, v_i) \mid \text{campo}_i \in \mathcal{F},\;
-    v_i \in \text{Tipo}(\text{campo}_i)\}
+    \state = \{(\text{campo}_i, v_i) \mid
+      \text{campo}_i \in \mathcal{F}_{\text{campos}},\;
+      v_i \in \text{Tipo}(\text{campo}_i)\}
   \]
-  onde $\mathcal{F}$ \'e o conjunto finito de campos permitidos,
-  definido no contrato de state (\texttt{state\_contract.md}).
+  onde $\mathcal{F}_{\text{campos}}$ \'e o conjunto finito de campos
+  permitidos, definido no contrato de state
+  (\texttt{state\_contract.md}). N\~ao confundir com
+  $\mathcal{F}\subset\Pi$ (proposi\c{c}\~oes forward no resumo).
 \end{definicao}
 
 Os principais campos do state (conforme \texttt{criar\_state\_inicial}
@@ -483,8 +569,9 @@ em \texttt{state\_types.py}) s\~ao:
 \end{center}
 
 \begin{propriedade}[Controle de Acesso]
-  Cada agente $A_i$ possui um conjunto de escrita $W_i \subset \mathcal{F}$
-  e um conjunto de leitura $R_i \subset \mathcal{F}$. Nenhum agente pode
+  Cada agente $A_i$ possui um conjunto de escrita
+  $W_i \subset \mathcal{F}_{\text{campos}}$ e um conjunto de leitura
+  $R_i \subset \mathcal{F}_{\text{campos}}$. Nenhum agente pode
   escrever em campos fora de $W_i$:
   \[
     \forall A_i,\; A_i \text{ escreve em } f \implies f \in W_i
@@ -1273,8 +1360,10 @@ A tool \texttt{analisar\_doi} responde \`a pergunta:
   \[
     g_k = \overline{\text{DOI}}^{\text{act}}_k - \overline{\text{DOI}}^{\text{plan}}_k
   \]
-  onde $\overline{\text{DOI}}_k$ \'e a \textbf{m\'edia} (n\~ao soma) do DOI no grupo,
-  porque dias de invent\'ario n\~ao s\~ao aditivos.
+  onde $\overline{\text{DOI}}_k$ \'e a \textbf{m\'edia temporal} (n\~ao soma)
+  do DOI nas linhas do grupo $k\in\mathcal{K}_1$ (um SKU $\times$
+  contexto). Dias de invent\'ario n\~ao s\~ao aditivos; a barra n\~ao
+  significa m\'edia entre SKUs.
 \end{definicao}
 
 \begin{definicao}[Impacto DOI]
@@ -1518,8 +1607,8 @@ A tool \texttt{analisar\_desvio\_persistente} detecta problemas
       \text{sgn}(\Delta^{\text{mes}}_{k,m}) = \text{sgn}(\Delta^{\text{mes}}_{k,M})
       \;\forall\; m \in [M-n+1, M]}
   \]
-  Se $n^{\text{pers}}_k \geq \tau_p$ (default 3 meses,
-  $\Theta_{\text{limiar\_desvio\_persistente}}$), o SKU \'e marcado
+  Se $n^{\text{pers}}_k \geq n_p$ (default 3 meses,
+  $\Theta.\texttt{limiar\_desvio\_persistente\_meses}$), o SKU \'e marcado
   como desvio persistente. A m\'edia do desvio nos meses persistentes \'e:
   \[
     \overline{\Delta}^{\text{pers}}_k = \frac{1}{n^{\text{pers}}_k}
@@ -2734,9 +2823,11 @@ O Critic possui guardrail pr\'oprio para garantir JSON v\'alido:
   \[
     c \in [0.0, 1.0]
   \]
-  Se $c < \tau_c$ onde $\tau_c = \Theta_{\text{limiar\_confianca}}$
-  (default 0.7, via \texttt{LIMIAR\_CONFIANCA\_CRITIC}), todas as
-  proposi\c{c}\~oes na fila Nexus recebem \textbf{revis\~ao obrigat\'oria}.
+  Se $c < \tau_c$ onde $\tau_c =
+  \texttt{Settings.limiar\_confianca\_critic}$
+  (default 0.7, via \texttt{LIMIAR\_CONFIANCA\_CRITIC}; \textbf{fora}
+  de $\Theta$), todas as proposi\c{c}\~oes na fila Nexus recebem
+  \textbf{revis\~ao obrigat\'oria}.
 \end{definicao}
 
 \begin{definicao}[Condi\c{c}\~ao de Retry do Optimus]
@@ -3174,43 +3265,23 @@ Todos os limiares de dom\'inio s\~ao encapsulados na dataclass
 com defaults Mondelez:
 
 \begin{definicao}[DomainThresholds]
+  Usando os s\'imbolos curtos da Subse\c{c}\~ao~\ref{subsec:aliases-limiares}:
   \[
-    \Theta = \begin{pmatrix}
-      \tau_{\text{doi\_rupt}} \\
-      \tau_{\text{doi\_over}} \\
-      \tau_{\text{desvio}} \\
-      \tau_{\text{desvio\_severo}} \\
-      \gamma_{\text{media}} \\
-      \gamma_{\text{alta}} \\
-      \tau_{\text{estavel}} \\
-      \tau_{\text{premissa}} \\
-      \tau_{\text{acel}} \\
-      n_{\text{persist}} \\
-      w_{\text{janela}} \\
-      \mu_{\text{forward}} \\
-      w_{\text{peso\_q}} \\
-      w_{\text{peso\_o}} \\
-      w_{\text{peso\_p}}
-    \end{pmatrix}
-    =
-    \begin{pmatrix}
-      15.0 \\
-      40.0 \\
-      5.0 \\
-      10.0 \\
-      7.0 \\
-      15.0 \\
-      3.0 \\
-      15.0 \\
-      5.0 \\
-      3 \\
-      30 \\
-      \texttt{nan} \\
-      1.5 \\
-      1.4 \\
-      1.1
-    \end{pmatrix}_{\text{default Mondelez}}
+    \Theta = \bigl(
+      \tau_r,\; \tau_o,\; \tau_d,\; \tau_h,\;
+      \gamma_m,\; \gamma_h,\;
+      \tau_e,\; \tau_f,\; \tau_a,\;
+      n_p,\; w,\; \mu,\;
+      w_q,\; w_o,\; w_p,\;
+      N_d,\; N_f,\; N_o,\;
+      I_{\min},\; \Delta_{\min}
+    \bigr)
   \]
+  com defaults Mondelez
+  $(15,\,40,\,5,\,10,\,7,\,15,\,3,\,15,\,5,\,3,\,30,\,\texttt{nan},\,
+  1.5,\,1.4,\,1.1,\,5,\,5,\,5,\,100,\,5)$.
+  Limiares de harness ($\tau_c$, $\tau_{\text{DS}}$, $r_{\max}$)
+  vivem em \texttt{Settings}, n\~ao em $\Theta$.
 \end{definicao}
 
 \begin{propriedade}[Imutabilidade de $\Theta$]
@@ -3227,9 +3298,9 @@ com defaults Mondelez:
   \toprule
   \textbf{Vari\'avel .env} & \textbf{S\'imbolo} & \textbf{Default} & \textbf{Efeito no pipeline} \\
   \midrule
-  \texttt{DOI\_RUPTURA\_DIAS} & $\tau_{\text{rupt}}$ & 15.0 & DOI abaixo: risco ruptura (forward) \\
-  \texttt{DOI\_OVERSTOCK\_DIAS} & $\tau_{\text{over}}$ & 40.0 & DOI acima: risco overstock (forward) \\
-  \texttt{LIMIAR\_DESVIO\_PCT} & $\tau_d$ & 5.0 & Desvio\% m\'inimo para gerar $\pi$ \\
+  \texttt{DOI\_RUPTURA\_DIAS} & $\tau_r$ & 15.0 & DOI abaixo: risco ruptura (forward) \\
+  \texttt{DOI\_OVERSTOCK\_DIAS} & $\tau_o$ & 40.0 & DOI acima: risco overstock (forward) \\
+  \texttt{LIMIAR\_DESVIO\_PCT} & $\tau_d$ ($\equiv\tau_m$) & 5.0 & Filtro $\pi$ / severidade m\'edia SO/SI \\
   \texttt{LIMIAR\_DESVIO\_SEVERO\_PCT} & $\tau_h$ & 10.0 & Desvio\% para severidade alta \\
   \texttt{LIMIAR\_DOI\_GAP\_MEDIA} & $\gamma_m$ & 7.0 & Gap DOI: severidade m\'edia / filtro Optimus \\
   \texttt{LIMIAR\_DOI\_GAP\_ALTA} & $\gamma_h$ & 15.0 & Gap DOI: severidade alta \\
@@ -3237,13 +3308,14 @@ com defaults Mondelez:
   \texttt{LIMIAR\_PREMISSA\_FURADA\_PCT} & $\tau_f$ & 15.0 & Diverg\^encia\% forward incoerente \\
   \texttt{LIMIAR\_ACELERACAO\_PCT} & $\tau_a$ & 5.0 & Varia\c{c}\~ao (pp) para ritmo SO \\
   \texttt{LIMIAR\_DESVIO\_PERSISTENTE\_MESES} & $n_p$ & 3 & Meses m\'inimos para desvio persistente \\
-  \texttt{JANELA\_RECENTE\_DIAS} & $w$ & 30 & Janela temporal (carregada; ver nota) \\
+  \texttt{JANELA\_RECENTE\_DIAS} & $w$ & 30 & Janela temporal (via $\Theta$ nas tools) \\
   \texttt{FORWARD\_MARKER} & $\mu$ & \texttt{nan} & Marcador de dados forward \\
-  \texttt{PESO\_QUESTIONAR\_PREMISSA} & $w_q$ & 1.5 & Peso ordenacao forward \\
-  \texttt{PESO\_CAPTURAR\_OPORTUNIDADE} & $w_o$ & 1.4 & Peso ordenacao oportunidade \\
-  \texttt{PESO\_INVESTIGAR\_DESVIO\_PERSISTENTE} & $w_p$ & 1.1 & Peso ordenacao persistente \\
-  \texttt{TOP\_N\_RISCOS} & $N_r$ & 3 & Tamanho bloco riscos executivo \\
-  \texttt{TOP\_N\_OPORTUNIDADES} & $N_o$ & 5 & Tamanho bloco oportunidades \\
+  \texttt{PESO\_QUESTIONAR\_PREMISSA} & $w_q$ & 1.5 & Peso ordena\c{c}\~ao forward \\
+  \texttt{PESO\_CAPTURAR\_OPORTUNIDADE} & $w_o$ & 1.4 & Peso ordena\c{c}\~ao oportunidade \\
+  \texttt{PESO\_INVESTIGAR\_DESVIO\_PERSISTENTE} & $w_p$ & 1.1 & Peso ordena\c{c}\~ao persistente \\
+  \texttt{TOP\_N\_DOI} & $N_d$ & 5 & Top DOI no resumo / PNG \\
+  \texttt{TOP\_N\_FORWARD} & $N_f$ & 5 & Top forward no resumo / PNG \\
+  \texttt{TOP\_N\_OPORTUNIDADES} & $N_o$ & 5 & Top oportunidades no resumo / PNG \\
   \texttt{LIMIAR\_PERSISTENTE\_IMPACTO} & $I_{\min}$ & 100 & Filtro ruido persistente \\
   \texttt{LIMIAR\_PERSISTENTE\_DESVIO\_PCT} & $\Delta_{\min}$ & 5.0 & Filtro ruido persistente \\
   \bottomrule
@@ -3251,17 +3323,11 @@ com defaults Mondelez:
 \end{center}
 
 \begin{observacao}
-  $w$ \'e carregado em $\Theta$, mas no fluxo Nexus Mondelez as tools
-  de tend\^encia/forward ainda usam o default $30$ do argumento
-  Python. Ver observa\c{c}\~ao em ``Propaga\c{c}\~ao de $\Theta$''.
-\end{observacao}
-
-\begin{observacao}
   Al\'em de $\Theta$, o objeto \texttt{Settings} carrega limiares de
-  \textbf{harness} (n\~ao de dom\'inio):
-  \texttt{LIMIAR\_CONFIANCA\_CRITIC} (default 0.7) e
-  \texttt{MAX\_OPTIMUS\_RETRIES} (default 1). Estes controlam o Critic
-  e o loop de retry, n\~ao as f\'ormulas S\&OE.
+  \textbf{harness} (n\~ao de dom\'inio): $\tau_c$ =
+  \texttt{LIMIAR\_CONFIANCA\_CRITIC} (default 0.7),
+  $\tau_{\text{DS}}$ = \texttt{LIMIAR\_CONFIANCA\_DATASHIELD} (default 0.6)
+  e $r_{\max}$ = \texttt{MAX\_OPTIMUS\_RETRIES} (default 1).
 \end{observacao}
 
 
@@ -4176,13 +4242,12 @@ Explicitamente \textbf{fora} do escopo formalizado:
   \item \textbf{MOE (Mixture of Experts) / router din\^amico}:
     o fluxo \'e pipeline fixo, n\~ao conversa multi-agente aberta.
   \item \textbf{HITL da fila}: \texttt{montar\_fila\_com\_flags} existe;
-    \texttt{solicitar\_aprovacao(tipo=fila\_nexus)} ainda n\~ao.
+    \texttt{solicitar\_aprovacao(tipo=fila\_nexus)} ainda n\~ao fecha
+    o ciclo aprovar/rejeitar/editar.
   \item \textbf{DataShield N\'iveis 2--3}: N\'ivel 1 h\'ibrido implementado;
     ETL e diagn\'ostico ainda n\~ao.
   \item \textbf{Cobertura total da whitelist}: o Optimus gera 8 dos
     14 tipos; 6 tipos whitelisted ficam sem gerador.
-  \item \textbf{$w$ via $\Theta$}: \texttt{JANELA\_RECENTE\_DIAS} \'e
-    carregada, mas n\~ao propagada pelo Nexus \`as tools.
   \item \textbf{N\~ao-determinismo residual}: a confian\c{c}a $c$ do Critic
     pode variar entre chamadas LLM; isso afeta flags $r_i$ e retries,
     \textbf{n\~ao} os valores de $\Sigma$ nem $\Pi$.
@@ -4243,6 +4308,13 @@ n\~ao entram como invariantes deste documento:
     side-effect.
   \item Router MOE / cr\'itica multi-agente al\'em do Critic atual.
   \item Limite de tamanho de arquivo no Input/DataShield.
+  \item \textbf{Dual ingress PBI/MCP (ADR-0025)}: spec aceita; c\'odigo
+    PoC em \texttt{planning.md} Fase 1.7a.2. Ingresso planilha = DataShield;
+    ingresso PBI unificado = cat\'alogo DAX + \texttt{ExecuteQuery}.
+  \item \textbf{Backlog p\'os-PoC PBI} (n\~ao misturar com a PoC):
+    cat\'alogo DAX Mondelez quando o semantic model for publicado;
+    Popa/persist\^encia; entrega omnichannel; connector Fabric cron;
+    cap\'itulos formais LaTeX do ramo PBI.
 \end{enumerate}
 
 Quando implementados, a modelagem deve ser estendida nos cap\'itulos

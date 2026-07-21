@@ -484,6 +484,32 @@ analisar_desvio_plano requer:
 - coluna volume_plano
 ```
 
+### Tools Dual Ingress PBI (ADR-0025) -- PoC / planejado
+
+Contrato detalhado: `docs/contracts/powerbi_catalog_contract.md`.
+
+```text
+carregar_catalogo_dax(path) -> dict
+  deterministic_tool / io_tool
+  Valida YAML contra contrato; nao chama rede.
+
+executar_catalogo_pbi(catalog, artifact_id, mcp_client) -> dict
+  io_tool (MCP ExecuteQuery)
+  So DAX do catalogo; sem GenerateQuery no batch.
+  Saida: resultados_pbi + catalog_execucao
+
+adaptar_resultados_pbi_para_sinais(resultados_pbi, ...) -> list[Sinal]
+  deterministic_tool
+  PoC: tipos minimos; Mondelez PBI = backlog (novo mapeamento)
+```
+
+Backlog pos-PoC (nao implementar na 1.7a.2):
+
+```text
+catalogo_mondelez_s2r.yaml + mapeamento DOI/SO/SI
+connector HTTP Fabric standalone (cron)
+```
+
 Se entrada for invalida, a tool deve:
 
 ```text id="z9l0gk"

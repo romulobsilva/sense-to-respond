@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sense to Respond — Arquitetura (meio-termo)</title>
+  <style>
+    :root {
+      --ink: #1f2937;
+      --muted: #64748b;
+      --line: #64748b;
+      --bg: #ffffff;
+      --panel: #f8fafc;
+      --hitl-bg: #fff7ed;
+      --hitl: #c2410c;
+      --rag-bg: #f5f3ff;
+      --rag: #6d28d9;
+      --section: #94a3b8;
+      --page: #eef2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--page);
+      padding: 28px;
+    }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 22px;
+    }
+
+    /* Coluna do fluxo + coluna das descricoes fora da caixa */
+    .stage {
+      display: grid;
+      grid-template-columns: 300px 56px 340px;
+      align-items: start;
+      margin-bottom: 8px;
+      max-width: 760px;
+    }
+
+    .box {
+      border: 2px solid var(--section);
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px 14px 14px;
+      position: relative;
+    }
+    .box.future {
+      border-style: dashed;
+      border-color: var(--rag);
+      background: #faf5ff;
+    }
+    .box-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 0 0 12px;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+    .node {
+      border: 1.5px solid var(--ink);
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .node.oval { border-radius: 999px; }
+    .node.hitl {
+      background: var(--hitl-bg);
+      border-color: var(--hitl);
+    }
+    .node.rag {
+      background: var(--rag-bg);
+      border-color: var(--rag);
+    }
+
+    .v {
+      text-align: center;
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.2;
+      padding: 4px 0;
+    }
+
+    /* Coluna do meio: pontilhados alinhados a cada no */
+    .bridges {
+      display: flex;
+      flex-direction: column;
+      padding-top: 34px; /* alinha com titulo + primeiro no */
+      gap: 0;
+    }
+    .bridges.no-title {
+      padding-top: 0;
+    }
+    .bridge-slot {
+      display: flex;
+      align-items: center;
+      height: 42px; /* ~altura do no */
+      margin-bottom: 28px; /* ~seta vertical entre nos */
+    }
+    .bridge-slot:last-child { margin-bottom: 0; }
+    .bridge-slot .line {
+      flex: 1;
+      border-top: 2px dotted var(--line);
+      position: relative;
+    }
+    .bridge-slot .line::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: -5px;
+      border: 5px solid transparent;
+      border-left: 7px solid var(--line);
+    }
+
+    /* Descricoes FORA da caixa */
+    .descs {
+      display: flex;
+      flex-direction: column;
+      padding-top: 34px;
+      gap: 0;
+    }
+    .descs.no-title { padding-top: 0; }
+    .desc {
+      border: 1px dashed var(--muted);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      color: #334155;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+    .desc:last-child { margin-bottom: 0; }
+
+    .main-v {
+      width: 300px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 20px;
+      margin: 6px 0;
+    }
+
+    /* Usuario (sem caixa de secao) */
+    .user-row {
+      display: grid;
+      grid-template-columns: 300px 56px 340px;
+      align-items: center;
+      max-width: 760px;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sense to Respond — visão meio-termo</h1>
+  <p class="sub">
+    Esquerda = componente (dentro da seção) · Direita = responsabilidade (fora da seção) ·
+    Seta pontilhada atravessa a borda
+  </p>
+
+  <!-- USUARIO -->
+  <div class="user-row">
+    <div class="node oval">Usuário / Analista S&amp;OE</div>
+    <div class="bridge-slot" style="margin:0;height:auto;">
+      <div class="line"></div>
+    </div>
+    <div class="desc" style="margin:0;">Upload de CSV / XLSX e pergunta de negócio</div>
+  </div>
+
+  <div class="main-v">↓</div>
+
+  <!-- 1. INGESTAO -->
+  <div class="stage">
+    <div class="box">
+      <div class="box-title">1. Ingestão</div>
+      <div class="steps">
+        <div class="node" id="n-ds">DataShield</div>
+        <div class="v">↓</div>
+        <div class="node hitl" id="n-h1">HITL — mapa</div>
+      </div>
+    </div>
+    <div class="bridges">
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+    </div>
+    <div class="descs">
+      <div class="desc">DataLoader semântico: organiza e normaliza os dados de acordo com o schema</div>
+      <div class="desc">Humano confirma ou corrige o mapa quando necessário</div>
+    </div>
+  </div>
+
+  <div class="main-v">↓</div>
+
+  <!-- 2. ANALISE -->
+  <div class="stage">
+    <div class="box">
+      <div class="box-title">2. Análise e proposta — orquestrada pelo Nexus</div>
+      <div class="steps">
+        <div class="node">Dominion</div>
+        <div class="v">↓</div>
+        <div class="node">Sinais</div>
+        <div class="v">↓</div>
+        <div class="node">Optimus</div>
+        <div class="v">↓</div>
+        <div class="node">Validador</div>
+        <div class="v">↓</div>
+        <div class="node">Critic</div>
+      </div>
+    </div>
+    <div class="bridges">
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+    </div>
+    <div class="descs">
+      <div class="desc">Executa ferramentas determinísticas: calcula SO, SI, DOI e forward</div>
+      <div class="desc">Estrutura e organiza os desvios detectados</div>
+      <div class="desc">Gera proposições priorizadas pelo impacto financeiro estimado</div>
+      <div class="desc">Verifica regras de SKU, evidências e impacto</div>
+      <div class="desc">Realiza auditoria por LLM: coerência, evidências e confiança</div>
+    </div>
+  </div>
+
+  <div class="main-v">↓</div>
+
+  <!-- 3. RECOMENDACAO -->
+  <div class="stage">
+    <div class="box">
+      <div class="box-title">3. Recomendação e decisão</div>
+      <div class="steps">
+        <div class="node">Fila Nexus + Resumo</div>
+        <div class="v">↓</div>
+        <div class="node">Narrativa LLM</div>
+        <div class="v">↓</div>
+        <div class="node hitl">HITL final</div>
+      </div>
+    </div>
+    <div class="bridges">
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+      <div class="bridge-slot"><div class="line"></div></div>
+    </div>
+    <div class="descs">
+      <div class="desc">Apresenta o ranking de riscos, oportunidades e recomendações</div>
+      <div class="desc">Explica os resultados calculados sem recalcular os indicadores</div>
+      <div class="desc">Humano avalia e decide, sem execução automática no ERP</div>
+    </div>
+  </div>
+
+  <div class="main-v">↓</div>
+
+  <!-- 4. RAG -->
+  <div class="stage">
+    <div class="box future">
+      <div class="box-title">4. Conhecimento — futuro</div>
+      <div class="steps">
+        <div class="node rag">RAG</div>
+      </div>
+    </div>
+    <div class="bridges">
+      <div class="bridge-slot"><div class="line"></div></div>
+    </div>
+    <div class="descs">
+      <div class="desc">Consulta documentação, regras de negócio e auditorias geradas</div>
+    </div>
+  </div>
+
+  <p class="sub" style="margin-top:24px;">
+    Use este HTML no slide (print / PDF). O arquivo <code>.mmd</code> não consegue
+    colocar a descrição fora da caixa com seta atravessando a borda.
+  </p>
+</body>
+</html>

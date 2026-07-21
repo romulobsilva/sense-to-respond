@@ -1,0 +1,114 @@
+# Catalog DAX for Mondelez_S2R semantic model (MCP ExecuteQuery).
+# ASCII only. Contract: docs/contracts/powerbi_catalog_contract.md
+# artifact_id via env PBI_ARTIFACT_ID (see .env.example).
+
+catalog_id: mondelez_s2r_v1
+display_name: Mondelez S2R Sense to Respond
+artifact_id_env: PBI_ARTIFACT_ID
+artifact_id_default: "8d81650c-ea21-4fc4-8303-d067226f9442"
+domain: mondelez_s2r
+notes: >
+  Published model Mondelez_S2R in Power BI Service.
+  Batch path still needs dominion_pbi (planning 1.7a.2).
+  Numbers come from model measures; do not reimplement in Python.
+
+queries:
+  - query_id: Q1_kpis
+    description: Model-level SKU alert and inventory KPIs
+    max_rows: 10
+    expected_columns:
+      - SKUsInAlert
+      - SKUsUnderstock
+      - SKUsOverstock
+      - SellOutActualTon
+      - DOIActualDays
+    grain: model
+    uom:
+      SKUsInAlert: { unit: count, scope: model }
+      SKUsUnderstock: { unit: count, scope: model }
+      SKUsOverstock: { unit: count, scope: model }
+      SellOutActualTon: { unit: ton, scope: sellout_actual }
+      DOIActualDays: { unit: days, scope: doi_actual }
+    maps_to_signal_types:
+      - ruptura
+      - overstock
+    dax: |
+      EVALUATE ROW(
+        "SKUsInAlert", [# SKUs in Alert],
+        "SKUsUnderstock", [# SKUs Understock],
+        "SKUsOverstock", [# SKUs Overstock],
+        "SellOutActualTon", [SellOut Actual (Ton)],
+        "DOIActualDays", [DOI Actual (Days)]
+      )
+
+  - query_id: Q2_top_alertas
+    description: Top SKUs by alert severity with DOI and sellout
+    max_rows: 20
+    expected_columns:
+      - Fact_S2R Country
+      - Fact_S2R Category
+      - Fact_S2R Brand
+      - Fact_S2R SKU_Code
+      - Fact_S2R SKU_Description
+      - AlertType
+      - DOIStatus
+      - DOIActualDays
+      - SellOutActualTon
+      - AlertSeverity
+    grain: sku_x_country
+    uom:
+      DOIActualDays: { unit: days, scope: doi_actual }
+      SellOutActualTon: { unit: ton, scope: sellout_actual }
+      AlertSeverity: { unit: score, scope: alert }
+    maps_to_signal_types:
+      - ruptura
+      - overstock
+    dax: |
+      EVALUATE TOPN(
+        10,
+        SUMMARIZECOLUMNS(
+          'Fact_S2R'[Country],
+          'Fact_S2R'[Category],
+          'Fact_S2R'[Brand],
+          'Fact_S2R'[SKU_Code],
+          'Fact_S2R'[SKU_Description],
+          "AlertType", [Alert Type],
+          "DOIStatus", [DOI Status],
+          "DOIActualDays", [DOI Actual (Days)],
+          "SellOutActualTon", [SellOut Actual (Ton)],
+          "AlertSeverity", [Alert Severity]
+        ),
+        [AlertSeverity],
+        DESC
+      )
+
+  - query_id: Q3_sta_por_categoria
+    description: Sell-out attainment and DOI status by category
+    max_rows: 50
+    expected_columns:
+      - Fact_S2R Category
+      - SellOutActualTon
+      - SellOutPlanTon
+      - StaSoPct
+      - DOIActualDays
+      - SKUsInAlert
+    grain: category
+    uom:
+      SellOutActualTon: { unit: ton, scope: sellout_actual }
+      SellOutPlanTon: { unit: ton, scope: sellout_plan }
+      StaSoPct: { unit: pct, scope: sta_so }
+      DOIActualDays: { unit: days, scope: doi_actual }
+      SKUsInAlert: { unit: count, scope: category }
+    maps_to_signal_types:
+      - desvio_forecast
+      - ruptura
+    dax: |
+      EVALUATE
+      SUMMARIZECOLUMNS(
+        'Fact_S2R'[Category],
+        "SellOutActualTon", [SellOut Actual (Ton)],
+        "SellOutPlanTon", [SellOut Plan (Ton)],
+        "StaSoPct", [% STA SO],
+        "DOIActualDays", [DOI Actual (Days)],
+        "SKUsInAlert", [# SKUs in Alert]
+      )

@@ -1,0 +1,163 @@
+%% Sense to Respond - Meio-termo
+%% Caixa de secao = SO componentes
+%% Descricoes = FORA da caixa (coluna a direita)
+%% Setas pontilhadas: componente -.-> descricao
+%% Nota: Mermaid pode anexar a seta na borda do subgraph; as caixas de
+%% descricao ficam fora. Layout pixel-perfect: 02_apresentacao_meio_termo.html
+
+flowchart TB
+
+    %% =========================================================
+    %% USUARIO
+    %% =========================================================
+
+    subgraph ROW_U[" "]
+        direction LR
+        U(["Usuário / Analista S&OE"])
+        Ux["Upload de CSV / XLSX<br/>e pergunta de negócio"]
+    end
+    U -.-> Ux
+
+
+    %% =========================================================
+    %% 1. INGESTAO  |  descricoes fora
+    %% =========================================================
+
+    subgraph ROW_ING[" "]
+        direction LR
+
+        subgraph ING["1. Ingestão"]
+            direction TB
+            DS["DataShield"]
+            HITL1["HITL — mapa"]
+            DS --> HITL1
+        end
+
+        subgraph DESC_ING[" "]
+            direction TB
+            DSx["DataLoader semântico:<br/>organiza e normaliza os dados<br/>de acordo com o schema"]
+            HITL1x["Humano confirma ou corrige<br/>o mapa quando necessário"]
+            DSx ~~~ HITL1x
+        end
+    end
+
+    DS -.-> DSx
+    HITL1 -.-> HITL1x
+
+
+    %% =========================================================
+    %% 2. ANALISE  |  descricoes fora
+    %% =========================================================
+
+    subgraph ROW_ANA[" "]
+        direction LR
+
+        subgraph ANA["2. Análise e proposta — orquestrada pelo Nexus"]
+            direction TB
+            DOM["Dominion"]
+            SIG["Sinais"]
+            OPT["Optimus"]
+            VAL["Validador"]
+            CRIT["Critic"]
+            DOM --> SIG --> OPT --> VAL --> CRIT
+        end
+
+        subgraph DESC_ANA[" "]
+            direction TB
+            DOMx["Executa ferramentas determinísticas:<br/>calcula SO, SI, DOI e forward"]
+            SIGx["Estrutura e organiza<br/>os desvios detectados"]
+            OPTx["Gera proposições priorizadas<br/>pelo impacto financeiro estimado"]
+            VALx["Verifica regras de SKU,<br/>evidências e impacto"]
+            CRITx["Realiza auditoria por LLM:<br/>coerência, evidências e confiança"]
+            DOMx ~~~ SIGx ~~~ OPTx ~~~ VALx ~~~ CRITx
+        end
+    end
+
+    DOM -.-> DOMx
+    SIG -.-> SIGx
+    OPT -.-> OPTx
+    VAL -.-> VALx
+    CRIT -.-> CRITx
+
+
+    %% =========================================================
+    %% 3. RECOMENDACAO  |  descricoes fora
+    %% =========================================================
+
+    subgraph ROW_SAI[" "]
+        direction LR
+
+        subgraph SAI["3. Recomendação e decisão"]
+            direction TB
+            FILA["Fila Nexus + Resumo"]
+            NAR["Narrativa LLM"]
+            HITL2["HITL final"]
+            FILA --> NAR --> HITL2
+        end
+
+        subgraph DESC_SAI[" "]
+            direction TB
+            FILAx["Apresenta o ranking de riscos,<br/>oportunidades e recomendações"]
+            NARx["Explica os resultados calculados<br/>sem recalcular os indicadores"]
+            HITL2x["Humano avalia e decide,<br/>sem execução automática no ERP"]
+            FILAx ~~~ NARx ~~~ HITL2x
+        end
+    end
+
+    FILA -.-> FILAx
+    NAR -.-> NARx
+    HITL2 -.-> HITL2x
+
+
+    %% =========================================================
+    %% 4. CONHECIMENTO  |  descricao fora
+    %% =========================================================
+
+    subgraph ROW_FUT[" "]
+        direction LR
+
+        subgraph FUT["4. Conhecimento — futuro"]
+            direction TB
+            RAG["RAG"]
+        end
+
+        RAGx["Consulta documentação,<br/>regras de negócio e<br/>auditorias anteriormente geradas"]
+    end
+
+    RAG -.-> RAGx
+
+
+    %% =========================================================
+    %% FLUXO PRINCIPAL
+    %% =========================================================
+
+    U --> DS
+    HITL1 --> DOM
+    CRIT --> FILA
+    HITL2 --> U
+    FILA -.-> RAG
+    U -.-> RAG
+
+
+    %% =========================================================
+    %% ESTILOS
+    %% =========================================================
+
+    classDef componente fill:#FFFFFF,stroke:#1F2937,stroke-width:1.5px;
+    classDef descricao fill:#F8FAFC,stroke:#64748B,stroke-width:1px,stroke-dasharray:5 4;
+    classDef humano fill:#FFF7ED,stroke:#C2410C,stroke-width:1.5px;
+    classDef conhecimento fill:#F5F3FF,stroke:#6D28D9,stroke-width:1.5px;
+
+    class U,DS,DOM,SIG,OPT,VAL,CRIT,FILA,NAR componente;
+    class HITL1,HITL2 humano;
+    class RAG conhecimento;
+    class Ux,DSx,HITL1x,DOMx,SIGx,OPTx,VALx,CRITx,FILAx,NARx,HITL2x,RAGx descricao;
+
+    style ROW_U fill:transparent,stroke:transparent
+    style ROW_ING fill:transparent,stroke:transparent
+    style ROW_ANA fill:transparent,stroke:transparent
+    style ROW_SAI fill:transparent,stroke:transparent
+    style ROW_FUT fill:transparent,stroke:transparent
+    style DESC_ING fill:transparent,stroke:transparent
+    style DESC_ANA fill:transparent,stroke:transparent
+    style DESC_SAI fill:transparent,stroke:transparent

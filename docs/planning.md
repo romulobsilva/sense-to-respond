@@ -504,6 +504,56 @@ Remover acoplamentos ao dominio Mondelez para reutilizacao com outros clientes.
 
 ---
 
+## Fase 1.7a - PoC Dual Ingress / Dominion PBI (MCP) -- SPEC READY
+
+Ref: ADR-0025, `docs/contracts/powerbi_catalog_contract.md`.
+
+Dois rotulos de produto:
+
+* **PBI unificado** = Dominion via MCP: catalogo DAX (`ExecuteQuery`).
+* **Planilha / schema cru** = DataShield + HITL (caminho atual; Popa no backlog).
+
+PoC usa semantic model de teste (Agua). PBI Mondelez publicado:
+`catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID` no `.env` /
+`.env.example`. Codigo batch (`dominion_pbi`) ainda e 1.7a.2.
+
+### 1.7a.1 Spec (concluido nesta sessao)
+
+- [x] ADR-0025 aceita
+- [x] Contrato de catalogo DAX
+- [x] Exemplo YAML Agua (`docs/contracts/examples/`)
+- [x] Atualizacao architecture / state / rules / testing (delta)
+- [x] Backlog pos-PoC sinalizado (secao abaixo)
+
+### 1.7a.2 Implementacao PoC (proximo codigo; ainda nao feito)
+
+- [ ] `powerbi_mcp` connector fino (ExecuteQuery; auth fora do git)
+- [ ] Loader de catalogo YAML + validacao de contrato
+- [ ] `dominion_pbi`: executa catalogo -> `state["resultados_pbi"]`
+- [ ] Adaptador resultados_pbi -> `Sinal` (tipos PoC minimos)
+- [ ] Nexus/CLI: `--fonte pbi` vs `--input` CSV (mutuamente exclusivo)
+- [x] Env: `PBI_ARTIFACT_ID`, `PBI_CATALOG_PATH` (`.env.example` + local `.env`)
+- [ ] Reusar PNG/PDF com metadado `fonte_dados=pbi`
+- [ ] Testes com fixtures JSON (sem OAuth no CI)
+- [ ] Smoke manual autenticado -> PDF
+- [ ] Registrar em `agent.log.md` ao concluir codigo
+
+### Backlog pos-PoC PBI (NAO fazer na primeira entrega)
+
+Sinalizacao: itens abaixo ficam **bloqueados** ate PoC 1.7a.2 `[x]`.
+
+- [x] Catalogo DAX Mondelez S&OE (DOI/SO/SI): `catalogs/mondelez_s2r_v1.yaml` (Q1-Q3 smoke MCP OK)
+- [x] Swap documentado: `catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID`
+- [ ] Alinhar tipos de sinal PoC Agua com whitelist Mondelez
+- [ ] Popa / persistencia dataset / governanca (desenho produto)
+- [ ] Connector HTTP Fabric para cron (fora do MCP do Cursor), se preciso
+- [ ] Entrega omnichannel (email/WhatsApp) + coleta feedback
+- [ ] HITL `fila_nexus` no caminho PBI
+- [ ] Caps. formais LaTeX do dual ingress (alem da nota em Proximos Passos)
+- [ ] CI contra modelo PBI live (opcional; custo/auth)
+
+---
+
 ## Fase 1.7 - Optimus expandido
 
 5 tipos de decisao completos da apresentacao EY (slide 17).

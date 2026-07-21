@@ -1,0 +1,30 @@
+%% Sense to Respond - Arquitetura MACRO para apresentacao
+%% Poucos blocos, linguagem de negocio. Detalhe tecnico: 04_arquitetura_macro.mmd
+%% Solido = implementado | Tracejado = extensao futura
+
+flowchart LR
+    U([Usuario<br/>upload CSV / XLSX])
+
+    subgraph S1["INGESTÃO"]
+        DL[DataShield<br/>DataLoader semântico<br/>organiza e normaliza]
+    end
+
+    subgraph S2["ANÁLISE E DECISÃO"]
+        PIPE[Pipeline Sense to Respond<br/>sinais, proposições,<br/>validação e auditoria]
+    end
+
+    subgraph S3["RECOMENDAÇÃO"]
+        REC[Fila + Resumo executivo<br/>riscos e oportunidades<br/>HITL: humano decide]
+    end
+
+    subgraph S4["CONHECIMENTO - futuro"]
+        RAG[RAG<br/>consulta à documentação<br/>e auditorias geradas]
+    end
+
+    U --> DL --> PIPE --> REC
+    REC --> U
+    REC -.-> RAG
+    U -.-> RAG
+
+    classDef futuro stroke-dasharray: 5 5
+    class S4,RAG futuro
