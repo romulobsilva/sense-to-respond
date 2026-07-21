@@ -21,14 +21,16 @@
       "AlertType",
       "DOIStatus",
       "DOIActualDays",
+      "DOIIdealDays",
       "SellOutActualTon",
+      "SellOutActualNrUsd",
       "AlertSeverity"
     ],
     "rows": [
-      ["Brazil", "Cheese", "Philadelphia", "PHI-LIGHT-150G", "Philadelphia Light 150g", "Stock-out Risk", "Understock", 17.86, 609.15, 3],
-      ["Chile", "Cheese", "Philadelphia", "PHI-ORIGINAL-150G", "Philadelphia Original 150g", "Stock-out Risk", "Understock", 20.24, 210.29, 3],
-      ["Mexico", "Chocolates", "Toblerone", "TOB-BAR-100G", "Toblerone Milk 100g", "Stock-out Risk", "Understock", 19.94, 127.24, 3],
-      ["Brazil", "Biscuits", "Belvita", "BEL-LEITE-75G", "Belvita Leite e Mel 75g", "Stock-out Risk", "Understock", 19.63, 781.64, 3]
+      ["Brazil", "Cheese", "Philadelphia", "PHI-LIGHT-150G", "Philadelphia Light 150g", "Stock-out Risk", "Understock", 17.86, 26.14, 609.15, 2129886.0, 3],
+      ["Chile", "Cheese", "Philadelphia", "PHI-ORIGINAL-150G", "Philadelphia Original 150g", "Stock-out Risk", "Understock", 20.24, 26.14, 210.29, 4897.0, 3],
+      ["Mexico", "Chocolates", "Toblerone", "TOB-BAR-100G", "Toblerone Milk 100g", "Stock-out Risk", "Understock", 19.94, 26.14, 127.24, 154311.0, 3],
+      ["Brazil", "Biscuits", "Belvita", "BEL-LEITE-75G", "Belvita Leite e Mel 75g", "Stock-out Risk", "Understock", 19.63, 26.14, 781.64, 1474952.0, 3]
     ]
   },
   "Q3_sta_por_categoria": {
@@ -44,6 +46,55 @@
       ["Chocolates", 17487.14, 25244, 0.456, 26.34, 1],
       ["Biscuits", 25328.37, 35787, 0.496, 31.17, 0],
       ["Cheese", 3859.72, 5559, 0.476, 19.29, 2]
+    ]
+  },
+  "Q4_forward_risco": {
+    "columns": [
+      "Fact_S2R Country",
+      "Fact_S2R Category",
+      "Fact_S2R Brand",
+      "Fact_S2R SKU_Code",
+      "Fact_S2R Channel",
+      "DOIActual",
+      "DOIPlan",
+      "DOIIdeal",
+      "DOIStatus",
+      "SIPlan",
+      "SIActual",
+      "SOActual",
+      "SOPlan",
+      "SIGapPct",
+      "NRImpact",
+      "AlertType",
+      "AlertSeverity"
+    ],
+    "rows": [
+      ["Brazil", "Cheese", "Philadelphia", "PHI-LIGHT-150G", "Modern Trade", 17.86, 25.0, 26.14, "Understock", 900.0, 620.0, 609.15, 880.0, -0.31, 2129886.0, "Stock-out Risk", 3],
+      ["Chile", "Cheese", "Philadelphia", "PHI-ORIGINAL-150G", "E-commerce", 20.24, 21.0, 26.14, "Understock", 280.0, 190.0, 210.29, 260.0, -0.32, 4897.0, "Stock-out Risk", 3],
+      ["Brazil", "Chocolates", "Milka", "MLK-TABLET-100G", "Modern Trade", 52.11, 28.0, 26.14, "Overstock", 313.0, 170.0, 168.54, 313.0, -0.46, 420000.0, "Excess Stock", 2],
+      ["Argentina", "Powdered Bev", "Tang", "TAN-LARANJA-25G", "Modern Trade", 40.16, 30.0, 26.14, "Overstock", 274.0, 160.0, 159.82, 275.0, -0.42, 88000.0, "Excess Stock", 2]
+    ]
+  },
+  "Q5_forward_oportunidade": {
+    "columns": [
+      "Fact_S2R Country",
+      "Fact_S2R Category",
+      "Fact_S2R Brand",
+      "Fact_S2R SKU_Code",
+      "Fact_S2R Channel",
+      "DOIActual",
+      "DOIIdeal",
+      "DOIStatus",
+      "SOActual",
+      "SOPlan",
+      "SIPlan",
+      "NRImpact",
+      "AlertSeverity"
+    ],
+    "rows": [
+      ["Brazil", "Cheese", "Philadelphia", "PHI-LIGHT-150G", "Modern Trade", 17.86, 26.14, "Understock", 609.15, 880.0, 900.0, 2129886.0, 3],
+      ["Brazil", "Biscuits", "Belvita", "BEL-LEITE-75G", "Traditional Trade", 19.63, 26.14, "Understock", 781.64, 950.0, 920.0, 1474952.0, 3],
+      ["Mexico", "Chocolates", "Toblerone", "TOB-BAR-100G", "E-commerce", 19.94, 26.14, "Understock", 127.24, 180.0, 170.0, 154311.0, 3]
     ]
   }
 }

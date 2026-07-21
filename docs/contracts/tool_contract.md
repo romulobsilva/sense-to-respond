@@ -503,14 +503,17 @@ adaptar_resultados_pbi_para_sinais(resultados_pbi, ...) -> list[Sinal]
   PoC: tipos minimos; Mondelez PBI = backlog (novo mapeamento)
 ```
 
-PoC 1.7a.2: `powerbi_catalog.py`, `powerbi_mcp.py`, `dominion_pbi.py`
-+ catalogo `catalogs/mondelez_s2r_v1.yaml`.
+PoC 1.7a.2 + 1.7a.3: `powerbi_catalog.py`, `powerbi_mcp.py`,
+`dominion_pbi.py` + catalogo `catalogs/mondelez_s2r_v1.yaml` (Q1-Q5).
+Adaptador emite `doi_fora_politica`, `desvio_sellout`,
+`premissa_forward_furada`, `forward_oportunidade` (Optimus inalterado).
 
 Backlog pos-PoC:
 
 ```text
 connector HTTP Fabric standalone (cron)
 alinhar tipos sinal Agua <-> Mondelez
+paridade temporal total (forward_marker) no modelo PBI
 ```
 
 Se entrada for invalida, a tool deve:

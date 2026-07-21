@@ -63,10 +63,13 @@ class TestCatalogoDax:
     def test_carrega_mondelez(self) -> None:
         catalog = carregar_catalogo_dax(CATALOG_MONDELEZ)
         assert catalog["catalog_id"] == "mondelez_s2r_v1"
-        assert len(catalog["queries"]) >= 3
+        assert len(catalog["queries"]) >= 5
         ids = {q["query_id"] for q in catalog["queries"]}
         assert "Q1_kpis" in ids
         assert "Q2_top_alertas" in ids
+        assert "Q3_sta_por_categoria" in ids
+        assert "Q4_forward_risco" in ids
+        assert "Q5_forward_oportunidade" in ids
 
     def test_carrega_agua_exemplo(self) -> None:
         catalog = carregar_catalogo_dax(CATALOG_AGUA)
@@ -113,14 +116,17 @@ class TestExecutarCatalogoFixture:
             client=client,
         )
         assert all(item["ok"] for item in out["catalog_execucao"])
+        assert len(out["catalog_execucao"]) >= 5
         assert "Q1_kpis" in out["resultados_pbi"]
+        assert "Q4_forward_risco" in out["resultados_pbi"]
+        assert "Q5_forward_oportunidade" in out["resultados_pbi"]
         assert out["resultados_pbi"]["Q1_kpis"]["rows"]
 
 
 class TestAdaptadorSinais:
     """adaptar_resultados_pbi_para_sinais."""
 
-    def test_gera_doi_e_sellout(self) -> None:
+    def test_gera_doi_sellout_forward_e_oportunidade(self) -> None:
         client = FixturePowerBIClient(FIXTURE_PBI)
         catalog = carregar_catalogo_dax(CATALOG_MONDELEZ)
         out = executar_catalogo_pbi(
@@ -128,7 +134,7 @@ class TestAdaptadorSinais:
             "8d81650c-ea21-4fc4-8303-d067226f9442",
             client,
         )
-        from optimus import gerar_proposicoes
+        from optimus import gerar_proposicoes, montar_resumo_executivo
 
         sinais = adaptar_resultados_pbi_para_sinais(
             out["resultados_pbi"],
@@ -137,14 +143,32 @@ class TestAdaptadorSinais:
         tipos = {s.tipo for s in sinais}
         assert "doi_fora_politica" in tipos
         assert "desvio_sellout" in tipos
+        assert "premissa_forward_furada" in tipos
+        assert "forward_oportunidade" in tipos
         assert any(s.sku == "PHI-LIGHT-150G" for s in sinais)
+        doi_sinais = [s for s in sinais if s.tipo == "doi_fora_politica"]
+        assert all(s.metrica == "doi_dias_policy" for s in doi_sinais)
+        fwd = [s for s in sinais if s.tipo == "premissa_forward_furada"]
+        riscos = {s.risco_forward for s in fwd}
+        assert "ruptura" in riscos
+        assert "overstock" in riscos
+
         props = gerar_proposicoes(sinais)
         doi_props = [
             p for p in props if p.tipo == "rebalancear_estoque_doi"
         ]
         assert doi_props
-        assert any("target PoC" in p.descricao for p in doi_props)
-        assert any("nao DOI_Policy" in p.descricao for p in doi_props)
+        assert any("Policy DOI Ideal" in p.descricao for p in doi_props)
+        assert any(
+            p.tipo == "questionar_premissa_plano" for p in props
+        )
+        assert any(p.tipo == "capturar_oportunidade" for p in props)
+
+        resumo = montar_resumo_executivo(props, DomainThresholds())
+        assert len(resumo["top_forward"]) >= 1
+        assert len(resumo["top_oportunidades"]) >= 1
+        assert resumo["diversidade_forward"]["n_ruptura"] >= 1
+        assert resumo["diversidade_forward"]["n_overstock"] >= 1
 
 
 class TestRodarDominionPbi:

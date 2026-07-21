@@ -6,6 +6,32 @@
 
 ---
 
+## Sessao 24 - 2026-07-21 - 1.7a.3 Forward/Oportunidades no caminho PBI
+
+### Contexto
+- Relatorio PBI so preenchia painel DOI; Forward/Opps vazios
+- Usuario pediu caminho B (queries + sinais) apos commit 1.7a.2
+
+### Decisoes
+- Sem ADR nova: amend backlog ADR-0025 + fase planning 1.7a.3
+- Q4/Q5 no catalogo Mondelez; aproximacao vs CSV documentada
+- DOI passa a preferir Policy DOI Ideal (Q2); NR USD quando a measure existir
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `catalogs/mondelez_s2r_v1.yaml` | Q2+Ideal/NR; Q4; Q5 |
+| `dominion_pbi.py` | adaptadores Q4/Q5 + DOI policy |
+| fixture + `tests/test_dominion_pbi.py` | cobertura executiva |
+| `optimus.py` / `relatorio.py` / `visualizacao.py` | rotulos Policy/NR |
+| planning, ADR-0025, contrato, architecture | sync 1.7a.3 |
+
+### Proximos passos
+- Smoke manual `--fonte pbi` com token -> PDF com 3 paineis
+- Paridade total temporal = backlog (forward_marker no modelo)
+
+---
+
 ## Sessao 23 - 2026-07-21 - Implementacao PoC 1.7a.2 Dominion PBI
 
 ### Contexto

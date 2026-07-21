@@ -53,7 +53,14 @@ Cada item em `queries[]`:
 | `expected_columns` | list[str] | sim | Colunas do resultado |
 | `grain` | str | nao | Ex.: `model`, `sku_x_unidade`, `uf` |
 | `uom` | dict | recomendado | Mapa coluna -> unidade/escopo |
-| `maps_to_signal_types` | list[str] | nao | Tipos `Sinal` alvo (PoC ou MVP) |
+| `maps_to_signal_types` | list[str] | nao | Tipos `Sinal` alvo (nomes reais: `doi_fora_politica`, `desvio_sellout`, `premissa_forward_furada`, `forward_oportunidade`) |
+
+Mondelez 1.7a.3 (paridade parcial):
+
+* `Q4_forward_risco` -> `premissa_forward_furada` (`risco_forward` ruptura/overstock)
+* `Q5_forward_oportunidade` -> `forward_oportunidade`
+* Aproximacao: measures snapshot + `Policy DOI Ideal` / SI Gap %;
+  nao substitui serie temporal CSV com `forward_marker`.
 
 Regras:
 
@@ -106,8 +113,9 @@ Ver `docs/contracts/examples/agua_io_catalog.example.yaml`.
 
 ## 7. Checklist de aceicao (PoC)
 
-* [ ] YAML valida contra este contrato
-* [ ] Tres ou mais queries MCP-safe testadas manualmente
-* [ ] Env configuravel para artifact_id
-* [ ] Fixture JSON para testes offline
+* [x] YAML valida contra este contrato
+* [x] Tres ou mais queries MCP-safe testadas manualmente (Q1-Q5)
+* [x] Env configuravel para artifact_id
+* [x] Fixture JSON para testes offline
 * [x] Mondelez YAML: `catalogs/mondelez_s2r_v1.yaml` + env `PBI_ARTIFACT_ID`
+* [x] Q4/Q5 mapeados a tipos Optimus de forward/oportunidade (1.7a.3)

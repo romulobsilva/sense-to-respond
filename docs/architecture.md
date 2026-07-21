@@ -94,7 +94,7 @@ Quando nenhum arquivo e fornecido, o pipeline usa dados simulados em memoria:
 Input Guardrail -> Dominion (dados simulados) -> Sinais -> Optimus -> ... -> Usuario
 ```
 
-### 3.2 Modo PBI / MCP (PoC 1.7a.2)
+### 3.2 Modo PBI / MCP (PoC 1.7a.2 + 1.7a.3)
 
 Modulos: `powerbi_catalog.py`, `powerbi_mcp.py`, `dominion_pbi.py`.
 CLI: `python main.py --modo nexus --fonte pbi` (exige catalogo +
@@ -105,8 +105,15 @@ Catalogo YAML (queries EVALUATE)
   -> ExecuteQuery(artifactId, dax)  [fixture | REST]
   -> resultados_pbi
   -> adaptador -> Sinais
+       Q2 doi_fora_politica (Policy Ideal)
+       Q3 desvio_sellout
+       Q4 premissa_forward_furada   [1.7a.3]
+       Q5 forward_oportunidade      [1.7a.3]
   -> mesmo motor Optimus...PDF
 ```
+
+Q4/Q5 sao aproximacao snapshot (DOI Status + SI Gap / Policy Ideal),
+nao copia 1:1 de `analisar_forward` no CSV.
 
 ## 4. State compartilhado (blackboard)
 

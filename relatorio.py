@@ -81,10 +81,11 @@ def _rotulo_unidade_impacto(fonte_dados: Optional[str]) -> str:
     """
     Rotulo da unidade de impacto na apresentacao.
 
-    CSV/simulado: NR em moeda (R$). PBI PoC: proxy em toneladas de sell-out.
+    CSV/simulado: NR em moeda (R$).
+    PBI: prefer NR USD do modelo; fallback ton em alguns sinais (STA).
     """
     if _eh_fonte_pbi(fonte_dados):
-        return "ton SO (proxy)"
+        return "NR USD / ton (PBI)"
     return "R$"
 
 
@@ -538,14 +539,15 @@ def montar_html_relatorio(
     lim_pbi_html = ""
     if modo_pbi:
         lim_pbi_html = (
-            "<li>PoC PBI: impacto exibido em "
-            f"<strong>{_esc(unidade)}</strong> (proxy de volume), "
-            "n\u00e3o em moeda NR.</li>"
-            "<li>PoC PBI: target DOI = DOI atual +/- "
-            "<code>limiar_doi_gap_media</code>; ainda n\u00e3o usa "
-            "a tabela <code>DOI_Policy</code> do modelo.</li>"
-            "<li>PoC PBI: bloco Forward/Oportunidades pode ficar vazio "
-            "mesmo com sinais de sell-out na fila (recorte DOI-first).</li>"
+            "<li>PBI: impacto preferencialmente em "
+            f"<strong>{_esc(unidade)}</strong> a partir de measures do "
+            "modelo (NR USD); STA por categoria pode usar ton.</li>"
+            "<li>PBI 1.7a.3: DOI usa <code>Policy DOI Ideal</code> quando "
+            "a query traz a coluna; senao fallback "
+            "<code>limiar_doi_gap_media</code>.</li>"
+            "<li>PBI 1.7a.3: Forward/Oportunidades vêm de Q4/Q5 "
+            "(aproximacao vs serie temporal CSV "
+            "<code>analisar_forward</code>).</li>"
         )
 
     html_doc = f"""<!DOCTYPE html>

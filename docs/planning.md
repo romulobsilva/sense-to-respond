@@ -515,7 +515,8 @@ Dois rotulos de produto:
 
 PoC usa semantic model de teste (Agua). PBI Mondelez publicado:
 `catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID` no `.env` /
-`.env.example`. Codigo batch (`dominion_pbi`) ainda e 1.7a.2.
+`.env.example`. Batch `dominion_pbi` em 1.7a.2; paridade executiva
+forward/opps em 1.7a.3.
 
 ### 1.7a.1 Spec (concluido nesta sessao)
 
@@ -538,13 +539,27 @@ PoC usa semantic model de teste (Agua). PBI Mondelez publicado:
 - [ ] Smoke manual autenticado (`PBI_ACCESS_TOKEN`) -> PDF
 - [x] Registrar em `agent.log.md` ao concluir codigo
 
-### Backlog pos-PoC PBI (NAO fazer na primeira entrega)
+### 1.7a.3 Paridade executiva Forward / Oportunidades (PBI)
 
-Sinalizacao: itens abaixo ficam **bloqueados** ate PoC 1.7a.2 `[x]`.
+Aproximacao documentada vs CSV `analisar_forward` (serie temporal +
+`forward_marker`): usa measures snapshot + `DOI_Policy` / SI Gap %.
 
-- [x] Catalogo DAX Mondelez S&OE (DOI/SO/SI): `catalogs/mondelez_s2r_v1.yaml` (Q1-Q3 smoke MCP OK)
+- [x] Smoke MCP: `DimDate[MonthStatus]` Closed/Current/Future + measures SI/DOI Plan
+- [x] Catalogo: `Q4_forward_risco` -> `premissa_forward_furada`
+- [x] Catalogo: `Q5_forward_oportunidade` -> `forward_oportunidade`
+- [x] Q2: coluna `DOIIdealDays` (`Policy DOI Ideal`) no adaptador DOI
+- [x] Adaptador + fixture JSON + testes (forward ruptura/overstock + opps)
+- [x] Relatorio/PNG: unidade NR USD/ton; notas 1.7a.3 (sem “DOI-first vazio” como unico caso)
+- [ ] Smoke manual autenticado full pipeline -> PDF com top_forward e top_oportunidades
+- [x] Docs: ADR-0025 amend backlog, contrato, architecture, agent.log
+
+### Backlog pos-PoC PBI (apos 1.7a.2)
+
+- [x] Catalogo DAX Mondelez S&OE (DOI/SO/SI): `catalogs/mondelez_s2r_v1.yaml` (Q1-Q5)
 - [x] Swap documentado: `catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID`
+- [x] Paridade parcial forward/opps via Q4/Q5 (1.7a.3; nao e 1:1 com CSV)
 - [ ] Alinhar tipos de sinal PoC Agua com whitelist Mondelez
+- [ ] Paridade total CSV: janela temporal + `forward_marker` no modelo PBI
 - [ ] Popa / persistencia dataset / governanca (desenho produto)
 - [ ] Connector HTTP Fabric para cron (fora do MCP do Cursor), se preciso
 - [ ] Entrega omnichannel (email/WhatsApp) + coleta feedback

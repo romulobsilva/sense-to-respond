@@ -883,12 +883,13 @@ Schema com campos faltantes gera diagnostico
 
 ## 13d. Testes Dual Ingress / PBI MCP (ADR-0025)
 
-### PoC (1.7a.2 implementado)
+### PoC (1.7a.2) + paridade executiva (1.7a.3)
 
 ```text
 carregar_catalogo_dax valida YAML exemplo          [x] test_dominion_pbi
-executar_catalogo_pbi com fixture JSON             [x]
-adaptador resultados_pbi -> sinais (tipos PoC)     [x]
+executar_catalogo_pbi com fixture JSON (Q1-Q5)     [x]
+adaptador DOI + sellout + forward + oportunidade   [x]
+resumo top_forward e top_oportunidades preenchidos [x]
 Nexus --fonte pbi nao exige dataset_canonico       [x]
 auditoria registra catalog_execucao sem dump       [x]
 ```

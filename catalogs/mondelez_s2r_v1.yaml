@@ -1,6 +1,12 @@
 # Catalog DAX for Mondelez_S2R semantic model (MCP ExecuteQuery).
 # ASCII only. Contract: docs/contracts/powerbi_catalog_contract.md
 # artifact_id via env PBI_ARTIFACT_ID (see .env.example).
+#
+# Coverage:
+#   Q1-Q3: PoC 1.7a.2 (KPIs, DOI alerts, STA by category)
+#   Q4-Q5: 1.7a.3 executive parity (forward risk + opportunity)
+# Approximation vs CSV analisar_forward: snapshot measures + DOI_Policy /
+# SI gap; not full forward_marker time series.
 
 catalog_id: mondelez_s2r_v1
 display_name: Mondelez S2R Sense to Respond
@@ -9,8 +15,9 @@ artifact_id_default: "8d81650c-ea21-4fc4-8303-d067226f9442"
 domain: mondelez_s2r
 notes: >
   Published model Mondelez_S2R in Power BI Service.
-  Batch path still needs dominion_pbi (planning 1.7a.2).
   Numbers come from model measures; do not reimplement in Python.
+  Q4/Q5 approximate CSV forward/opportunity using DOI Status, DOI Plan,
+  Policy DOI Ideal and SI Gap % (planning 1.7a.3).
 
 queries:
   - query_id: Q1_kpis
@@ -30,8 +37,7 @@ queries:
       SellOutActualTon: { unit: ton, scope: sellout_actual }
       DOIActualDays: { unit: days, scope: doi_actual }
     maps_to_signal_types:
-      - ruptura
-      - overstock
+      - doi_fora_politica
     dax: |
       EVALUATE ROW(
         "SKUsInAlert", [# SKUs in Alert],
@@ -42,7 +48,7 @@ queries:
       )
 
   - query_id: Q2_top_alertas
-    description: Top SKUs by alert severity with DOI and sellout
+    description: Top SKUs by alert severity with DOI, policy ideal and sellout
     max_rows: 20
     expected_columns:
       - Fact_S2R Country
@@ -53,16 +59,19 @@ queries:
       - AlertType
       - DOIStatus
       - DOIActualDays
+      - DOIIdealDays
       - SellOutActualTon
+      - SellOutActualNrUsd
       - AlertSeverity
     grain: sku_x_country
     uom:
       DOIActualDays: { unit: days, scope: doi_actual }
+      DOIIdealDays: { unit: days, scope: doi_policy_ideal }
       SellOutActualTon: { unit: ton, scope: sellout_actual }
+      SellOutActualNrUsd: { unit: usd, scope: sellout_nr }
       AlertSeverity: { unit: score, scope: alert }
     maps_to_signal_types:
-      - ruptura
-      - overstock
+      - doi_fora_politica
     dax: |
       EVALUATE TOPN(
         10,
@@ -75,7 +84,9 @@ queries:
           "AlertType", [Alert Type],
           "DOIStatus", [DOI Status],
           "DOIActualDays", [DOI Actual (Days)],
+          "DOIIdealDays", [Policy DOI Ideal],
           "SellOutActualTon", [SellOut Actual (Ton)],
+          "SellOutActualNrUsd", [SellOut Actual (NR USD)],
           "AlertSeverity", [Alert Severity]
         ),
         [AlertSeverity],
@@ -100,8 +111,7 @@ queries:
       DOIActualDays: { unit: days, scope: doi_actual }
       SKUsInAlert: { unit: count, scope: category }
     maps_to_signal_types:
-      - desvio_forecast
-      - ruptura
+      - desvio_sellout
     dax: |
       EVALUATE
       SUMMARIZECOLUMNS(
@@ -111,4 +121,123 @@ queries:
         "StaSoPct", [% STA SO],
         "DOIActualDays", [DOI Actual (Days)],
         "SKUsInAlert", [# SKUs in Alert]
+      )
+
+  - query_id: Q4_forward_risco
+    description: >
+      Forward premise risk (approx): understock/overstock SKUs with SI gap
+      and DOI plan vs actual for questionar_premissa_plano
+    max_rows: 20
+    expected_columns:
+      - Fact_S2R Country
+      - Fact_S2R Category
+      - Fact_S2R Brand
+      - Fact_S2R SKU_Code
+      - Fact_S2R Channel
+      - DOIActual
+      - DOIPlan
+      - DOIIdeal
+      - DOIStatus
+      - SIPlan
+      - SIActual
+      - SOActual
+      - SOPlan
+      - SIGapPct
+      - NRImpact
+      - AlertType
+      - AlertSeverity
+    grain: sku_x_country_x_channel
+    uom:
+      DOIActual: { unit: days, scope: doi_actual }
+      DOIPlan: { unit: days, scope: doi_plan }
+      DOIIdeal: { unit: days, scope: doi_policy_ideal }
+      SIPlan: { unit: ton, scope: sellin_plan }
+      SIActual: { unit: ton, scope: sellin_actual }
+      SOActual: { unit: ton, scope: sellout_actual }
+      SIGapPct: { unit: pct, scope: si_gap }
+      NRImpact: { unit: usd, scope: sellout_nr }
+    maps_to_signal_types:
+      - premissa_forward_furada
+    dax: |
+      EVALUATE TOPN(
+        10,
+        FILTER(
+          SUMMARIZECOLUMNS(
+            'Fact_S2R'[Country],
+            'Fact_S2R'[Category],
+            'Fact_S2R'[Brand],
+            'Fact_S2R'[SKU_Code],
+            'Fact_S2R'[Channel],
+            "DOIActual", [DOI Actual (Days)],
+            "DOIPlan", [DOI Plan (Days)],
+            "DOIIdeal", [Policy DOI Ideal],
+            "DOIStatus", [DOI Status],
+            "SIPlan", [SellIn Plan (Ton)],
+            "SIActual", [SellIn Actual (Ton)],
+            "SOActual", [SellOut Actual (Ton)],
+            "SOPlan", [SellOut Plan (Ton)],
+            "SIGapPct", [SI Gap %],
+            "NRImpact", [SellOut Actual (NR USD)],
+            "AlertType", [Alert Type],
+            "AlertSeverity", [Alert Severity]
+          ),
+          [DOI Status] = "Understock" || [DOI Status] = "Overstock"
+        ),
+        [AlertSeverity],
+        DESC
+      )
+
+  - query_id: Q5_forward_oportunidade
+    description: >
+      Capture opportunity (approx): understock below Policy DOI Ideal with
+      NR impact for capturar_oportunidade / dual framing
+    max_rows: 20
+    expected_columns:
+      - Fact_S2R Country
+      - Fact_S2R Category
+      - Fact_S2R Brand
+      - Fact_S2R SKU_Code
+      - Fact_S2R Channel
+      - DOIActual
+      - DOIIdeal
+      - DOIStatus
+      - SOActual
+      - SOPlan
+      - SIPlan
+      - NRImpact
+      - AlertSeverity
+    grain: sku_x_country_x_channel
+    uom:
+      DOIActual: { unit: days, scope: doi_actual }
+      DOIIdeal: { unit: days, scope: doi_policy_ideal }
+      SOActual: { unit: ton, scope: sellout_actual }
+      SIPlan: { unit: ton, scope: sellin_plan }
+      NRImpact: { unit: usd, scope: sellout_nr }
+    maps_to_signal_types:
+      - forward_oportunidade
+    dax: |
+      EVALUATE TOPN(
+        8,
+        FILTER(
+          SUMMARIZECOLUMNS(
+            'Fact_S2R'[Country],
+            'Fact_S2R'[Category],
+            'Fact_S2R'[Brand],
+            'Fact_S2R'[SKU_Code],
+            'Fact_S2R'[Channel],
+            "DOIActual", [DOI Actual (Days)],
+            "DOIIdeal", [Policy DOI Ideal],
+            "DOIStatus", [DOI Status],
+            "SOActual", [SellOut Actual (Ton)],
+            "SOPlan", [SellOut Plan (Ton)],
+            "SIPlan", [SellIn Plan (Ton)],
+            "NRImpact", [SellOut Actual (NR USD)],
+            "AlertSeverity", [Alert Severity]
+          ),
+          [DOI Status] = "Understock"
+            && [DOI Actual (Days)] > 0
+            && [DOI Actual (Days)] < [Policy DOI Ideal]
+        ),
+        [NRImpact],
+        DESC
       )

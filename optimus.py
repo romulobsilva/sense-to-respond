@@ -295,11 +295,18 @@ def gerar_proposicoes(
                         acao = "Reduzir sell-in ou acelerar sell-out para drenar estoque."
                 else:
                     acao = "AUMENTAR sell-in para evitar ruptura de estoque."
-                # Caminho PBI PoC: target e DOI atual +/- limiar (nao DOI_Policy).
-                if sinal.sinal_id.startswith("SIG-PBI-DOI"):
+                # PBI: Policy Ideal (doi_dias_policy) ou fallback limiar PoC.
+                if sinal.metrica == "doi_dias_policy":
+                    alvo_txt = (
+                        f"target Policy DOI Ideal {sinal.referencia:.0f}d"
+                    )
+                elif sinal.metrica == "doi_dias_poc" or (
+                    sinal.sinal_id.startswith("SIG-PBI-DOI")
+                ):
                     alvo_txt = (
                         f"target PoC {sinal.referencia:.0f}d "
-                        f"(DOI atual +/- limiar_doi_gap_media; nao DOI_Policy)"
+                        f"(DOI atual +/- limiar_doi_gap_media; "
+                        f"Policy Ideal indisponivel)"
                     )
                 else:
                     alvo_txt = f"target {sinal.referencia:.0f}d"

@@ -1,13 +1,13 @@
 """
 Dominion PBI: execute DAX catalog via MCP/REST client and adapt to Sinal.
 
-ADR-0025 PoC. Numbers come from the semantic model; adapter only maps
-rows into existing signal types consumed by Optimus.
+ADR-0025 / planning 1.7a.2-1.7a.3. Numbers come from the semantic model;
+adapter only maps rows into existing signal types consumed by Optimus.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from config import DomainThresholds
 from powerbi_catalog import (
@@ -113,6 +113,301 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _si_gap_as_pct(raw: float) -> float:
+    """
+    Normalize SI Gap % from model (fraction 0-1 or percent).
+
+    Returns percent points (e.g. -31.0 for -0.31 fraction).
+    """
+    if -1.5 <= raw <= 1.5:
+        return round(raw * 100.0, 2)
+    return round(raw, 2)
+
+
+def _severidade_gap_dias(abs_gap: float, th: DomainThresholds) -> str:
+    """Map absolute DOI gap days to severidade."""
+    if abs_gap >= th.limiar_doi_gap_alta:
+        return "alta"
+    if abs_gap >= th.limiar_doi_gap_media:
+        return "media"
+    return "baixa"
+
+
+def _iter_table_rows(
+    resultados_pbi: Mapping[str, Any],
+    query_id: str,
+) -> List[Dict[str, Any]]:
+    """Return list of row dicts for a query_id, or empty."""
+    bloco = resultados_pbi.get(query_id)
+    if not isinstance(bloco, Mapping):
+        return []
+    columns = bloco.get("columns")
+    rows = bloco.get("rows")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for row_raw in rows:
+        if not isinstance(row_raw, list):
+            continue
+        out.append(_row_as_dict([str(c) for c in columns], row_raw))
+    return out
+
+
+def _doi_referencia_e_metrica(
+    doi_actual: float,
+    doi_ideal: float,
+    status_l: str,
+    th: DomainThresholds,
+) -> Tuple[float, str]:
+    """
+    Resolve DOI target: Policy Ideal when available, else PoC limiar.
+
+    Returns:
+        (referencia_dias, metrica_tag)
+    """
+    if doi_ideal > 0:
+        return doi_ideal, "doi_dias_policy"
+    if status_l == "understock":
+        return doi_actual + th.limiar_doi_gap_media, "doi_dias_poc"
+    return max(doi_actual - th.limiar_doi_gap_media, 0.0), "doi_dias_poc"
+
+
+def _adaptar_q2_doi(
+    resultados_pbi: Mapping[str, Any],
+    th: DomainThresholds,
+    contador: int,
+) -> Tuple[List[Sinal], int]:
+    """Q2_top_alertas -> doi_fora_politica."""
+    sinais: List[Sinal] = []
+    for row in _iter_table_rows(resultados_pbi, "Q2_top_alertas"):
+        status = str(_get_cell(row, "DOIStatus", "DOI Status") or "").strip()
+        status_l = status.lower()
+        if status_l not in ("understock", "overstock"):
+            continue
+
+        doi_actual = _to_float(
+            _get_cell(row, "DOIActualDays", "DOI Actual (Days)", "DOIActual")
+        )
+        doi_ideal = _to_float(
+            _get_cell(row, "DOIIdealDays", "DOIIdeal", "Policy DOI Ideal")
+        )
+        sellout = _to_float(
+            _get_cell(row, "SellOutActualTon", "SellOut Actual (Ton)")
+        )
+        nr_usd = _to_float(
+            _get_cell(row, "SellOutActualNrUsd", "NRImpact", "SellOut Actual (NR USD)")
+        )
+        sku = str(_get_cell(row, "SKU_Code", "Fact_S2R SKU_Code") or "")
+        if not sku:
+            continue
+
+        referencia, metrica = _doi_referencia_e_metrica(
+            doi_actual, doi_ideal, status_l, th
+        )
+        gap = doi_actual - referencia
+        desvio_pct = 0.0
+        if referencia > 0:
+            desvio_pct = round((gap / referencia) * 100.0, 2)
+
+        contador += 1
+        sinais.append(
+            Sinal(
+                sinal_id=f"SIG-PBI-DOI-{contador:03d}",
+                tipo="doi_fora_politica",
+                sku=sku,
+                canal=str(_get_cell(row, "Channel", "Fact_S2R Channel") or "geral"),
+                metrica=metrica,
+                valor=doi_actual,
+                referencia=referencia,
+                desvio_pct=desvio_pct,
+                severidade=_severidade_gap_dias(abs(gap), th),
+                pais=str(_get_cell(row, "Country", "Fact_S2R Country") or ""),
+                categoria=str(
+                    _get_cell(row, "Category", "Fact_S2R Category") or ""
+                ),
+                marca=str(_get_cell(row, "Brand", "Fact_S2R Brand") or ""),
+                nr_impacto=nr_usd if nr_usd > 0 else sellout,
+            )
+        )
+    return sinais, contador
+
+
+def _adaptar_q3_sellout(
+    resultados_pbi: Mapping[str, Any],
+    th: DomainThresholds,
+    contador: int,
+) -> Tuple[List[Sinal], int]:
+    """Q3_sta_por_categoria -> desvio_sellout."""
+    sinais: List[Sinal] = []
+    for row in _iter_table_rows(resultados_pbi, "Q3_sta_por_categoria"):
+        categoria = str(_get_cell(row, "Category", "Fact_S2R Category") or "")
+        if not categoria:
+            continue
+        actual = _to_float(
+            _get_cell(row, "SellOutActualTon", "SellOut Actual (Ton)")
+        )
+        plan = _to_float(_get_cell(row, "SellOutPlanTon", "SellOut Plan (Ton)"))
+        sta_pct = _to_float(_get_cell(row, "StaSoPct", "% STA SO"))
+        if 0.0 <= sta_pct <= 1.5:
+            desvio_pct = round((sta_pct - 1.0) * 100.0, 2)
+        else:
+            desvio_pct = round(sta_pct - 100.0, 2)
+
+        if abs(desvio_pct) < th.limiar_desvio_pct:
+            continue
+
+        if abs(desvio_pct) >= th.limiar_desvio_severo_pct:
+            severidade = "alta"
+        else:
+            severidade = "media"
+
+        contador += 1
+        sinais.append(
+            Sinal(
+                sinal_id=f"SIG-PBI-SO-{contador:03d}",
+                tipo="desvio_sellout",
+                sku=categoria,
+                canal="geral",
+                metrica="sellout_ton",
+                valor=actual,
+                referencia=plan,
+                desvio_pct=desvio_pct,
+                severidade=severidade,
+                categoria=categoria,
+                nr_impacto=abs(actual - plan),
+            )
+        )
+    return sinais, contador
+
+
+def _adaptar_q4_forward(
+    resultados_pbi: Mapping[str, Any],
+    th: DomainThresholds,
+    contador: int,
+) -> Tuple[List[Sinal], int]:
+    """Q4_forward_risco -> premissa_forward_furada."""
+    sinais: List[Sinal] = []
+    limiar = float(th.limiar_premissa_furada_pct)
+    for row in _iter_table_rows(resultados_pbi, "Q4_forward_risco"):
+        status = str(_get_cell(row, "DOIStatus", "DOI Status") or "").strip()
+        status_l = status.lower()
+        if status_l not in ("understock", "overstock"):
+            continue
+
+        sku = str(_get_cell(row, "SKU_Code", "Fact_S2R SKU_Code") or "")
+        if not sku:
+            continue
+
+        doi_actual = _to_float(_get_cell(row, "DOIActual", "DOI Actual (Days)"))
+        doi_plan = _to_float(_get_cell(row, "DOIPlan", "DOI Plan (Days)"))
+        si_gap_pct = _si_gap_as_pct(_to_float(_get_cell(row, "SIGapPct", "SI Gap %")))
+        nr_usd = _to_float(
+            _get_cell(row, "NRImpact", "SellOut Actual (NR USD)")
+        )
+        so_actual = _to_float(_get_cell(row, "SOActual", "SellOut Actual (Ton)"))
+
+        # Premissa furada: SI gap beyond threshold, or DOI vs plan gap.
+        doi_vs_plan_pct = 0.0
+        if doi_plan > 0:
+            doi_vs_plan_pct = round(
+                ((doi_actual - doi_plan) / doi_plan) * 100.0, 2
+            )
+        if abs(si_gap_pct) < limiar and abs(doi_vs_plan_pct) < limiar:
+            continue
+
+        if status_l == "understock":
+            risco = "ruptura"
+        else:
+            risco = "overstock"
+
+        desvio_pct = si_gap_pct if abs(si_gap_pct) >= abs(doi_vs_plan_pct) else doi_vs_plan_pct
+        if abs(desvio_pct) >= th.limiar_desvio_severo_pct:
+            severidade = "alta"
+        else:
+            severidade = "media"
+
+        contador += 1
+        sinais.append(
+            Sinal(
+                sinal_id=f"SIG-PBI-FWD-{contador:03d}",
+                tipo="premissa_forward_furada",
+                sku=sku,
+                canal=str(
+                    _get_cell(row, "Channel", "Fact_S2R Channel") or "geral"
+                ),
+                metrica="forward_doi_plan",
+                valor=doi_actual,
+                referencia=doi_plan if doi_plan > 0 else doi_actual,
+                desvio_pct=desvio_pct,
+                severidade=severidade,
+                pais=str(_get_cell(row, "Country", "Fact_S2R Country") or ""),
+                categoria=str(
+                    _get_cell(row, "Category", "Fact_S2R Category") or ""
+                ),
+                marca=str(_get_cell(row, "Brand", "Fact_S2R Brand") or ""),
+                risco_forward=risco,
+                nr_impacto=nr_usd if nr_usd > 0 else so_actual,
+            )
+        )
+    return sinais, contador
+
+
+def _adaptar_q5_oportunidade(
+    resultados_pbi: Mapping[str, Any],
+    th: DomainThresholds,
+    contador: int,
+) -> Tuple[List[Sinal], int]:
+    """Q5_forward_oportunidade -> forward_oportunidade."""
+    sinais: List[Sinal] = []
+    for row in _iter_table_rows(resultados_pbi, "Q5_forward_oportunidade"):
+        status = str(_get_cell(row, "DOIStatus", "DOI Status") or "").strip()
+        if status.lower() != "understock":
+            continue
+
+        sku = str(_get_cell(row, "SKU_Code", "Fact_S2R SKU_Code") or "")
+        if not sku:
+            continue
+
+        doi_actual = _to_float(_get_cell(row, "DOIActual", "DOI Actual (Days)"))
+        doi_ideal = _to_float(
+            _get_cell(row, "DOIIdeal", "Policy DOI Ideal", "DOIIdealDays")
+        )
+        if doi_ideal <= 0 or doi_actual <= 0 or doi_actual >= doi_ideal:
+            continue
+
+        nr_usd = _to_float(
+            _get_cell(row, "NRImpact", "SellOut Actual (NR USD)")
+        )
+        so_actual = _to_float(_get_cell(row, "SOActual", "SellOut Actual (Ton)"))
+        gap = doi_actual - doi_ideal
+        desvio_pct = round((gap / doi_ideal) * 100.0, 2)
+
+        contador += 1
+        sinais.append(
+            Sinal(
+                sinal_id=f"SIG-PBI-OPP-{contador:03d}",
+                tipo="forward_oportunidade",
+                sku=sku,
+                canal=str(
+                    _get_cell(row, "Channel", "Fact_S2R Channel") or "geral"
+                ),
+                metrica="doi_oportunidade",
+                valor=doi_actual,
+                referencia=doi_ideal,
+                desvio_pct=desvio_pct,
+                severidade=_severidade_gap_dias(abs(gap), th),
+                pais=str(_get_cell(row, "Country", "Fact_S2R Country") or ""),
+                categoria=str(
+                    _get_cell(row, "Category", "Fact_S2R Category") or ""
+                ),
+                marca=str(_get_cell(row, "Brand", "Fact_S2R Brand") or ""),
+                risco_forward="oportunidade",
+                nr_impacto=nr_usd if nr_usd > 0 else so_actual,
+            )
+        )
+    return sinais, contador
+
+
 def adaptar_resultados_pbi_para_sinais(
     resultados_pbi: Mapping[str, Any],
     thresholds: Optional[DomainThresholds] = None,
@@ -120,138 +415,24 @@ def adaptar_resultados_pbi_para_sinais(
     """
     Map catalog result tables into Sinal objects for Optimus.
 
-    PoC mapping (Mondelez / generic alert catalog):
-    - Q2_top_alertas Understock/Overstock -> doi_fora_politica
-    - Q3_sta_por_categoria STA gap -> desvio_sellout (category grain)
+    Mapping (Mondelez catalog):
+    - Q2_top_alertas -> doi_fora_politica (Policy Ideal when present)
+    - Q3_sta_por_categoria -> desvio_sellout
+    - Q4_forward_risco -> premissa_forward_furada
+    - Q5_forward_oportunidade -> forward_oportunidade
     """
     th = thresholds if thresholds is not None else DomainThresholds()
     sinais: List[Sinal] = []
     contador = 0
 
-    alertas = resultados_pbi.get("Q2_top_alertas")
-    if isinstance(alertas, Mapping):
-        columns = alertas.get("columns")
-        rows = alertas.get("rows")
-        if isinstance(columns, list) and isinstance(rows, list):
-            for row_raw in rows:
-                if not isinstance(row_raw, list):
-                    continue
-                row = _row_as_dict([str(c) for c in columns], row_raw)
-                status = str(
-                    _get_cell(row, "DOIStatus", "DOI Status") or ""
-                ).strip()
-                status_l = status.lower()
-                if status_l not in ("understock", "overstock"):
-                    continue
-
-                doi_actual = _to_float(
-                    _get_cell(row, "DOIActualDays", "DOI Actual (Days)")
-                )
-                sellout = _to_float(
-                    _get_cell(row, "SellOutActualTon", "SellOut Actual (Ton)")
-                )
-                sku = str(
-                    _get_cell(row, "SKU_Code", "Fact_S2R SKU_Code") or ""
-                )
-                if not sku:
-                    continue
-
-                # Understock: actual below target -> gap negativo
-                # Overstock: actual above target -> gap positivo
-                if status_l == "understock":
-                    referencia = doi_actual + th.limiar_doi_gap_media
-                else:
-                    referencia = max(doi_actual - th.limiar_doi_gap_media, 0.0)
-
-                gap = doi_actual - referencia
-                desvio_pct = 0.0
-                if referencia > 0:
-                    desvio_pct = round((gap / referencia) * 100.0, 2)
-
-                abs_gap = abs(gap)
-                if abs_gap >= th.limiar_doi_gap_alta:
-                    severidade = "alta"
-                elif abs_gap >= th.limiar_doi_gap_media:
-                    severidade = "media"
-                else:
-                    severidade = "baixa"
-
-                contador += 1
-                sinais.append(
-                    Sinal(
-                        sinal_id=f"SIG-PBI-DOI-{contador:03d}",
-                        tipo="doi_fora_politica",
-                        sku=sku,
-                        canal="geral",
-                        metrica="doi_dias",
-                        valor=doi_actual,
-                        referencia=referencia,
-                        desvio_pct=desvio_pct,
-                        severidade=severidade,
-                        pais=str(
-                            _get_cell(row, "Country", "Fact_S2R Country") or ""
-                        ),
-                        categoria=str(
-                            _get_cell(row, "Category", "Fact_S2R Category") or ""
-                        ),
-                        marca=str(
-                            _get_cell(row, "Brand", "Fact_S2R Brand") or ""
-                        ),
-                        nr_impacto=sellout,
-                    )
-                )
-
-    sta = resultados_pbi.get("Q3_sta_por_categoria")
-    if isinstance(sta, Mapping):
-        columns = sta.get("columns")
-        rows = sta.get("rows")
-        if isinstance(columns, list) and isinstance(rows, list):
-            for row_raw in rows:
-                if not isinstance(row_raw, list):
-                    continue
-                row = _row_as_dict([str(c) for c in columns], row_raw)
-                categoria = str(
-                    _get_cell(row, "Category", "Fact_S2R Category") or ""
-                )
-                if not categoria:
-                    continue
-                actual = _to_float(
-                    _get_cell(row, "SellOutActualTon", "SellOut Actual (Ton)")
-                )
-                plan = _to_float(
-                    _get_cell(row, "SellOutPlanTon", "SellOut Plan (Ton)")
-                )
-                sta_pct = _to_float(_get_cell(row, "StaSoPct", "% STA SO"))
-                # STA as fraction (0-1) or already percent
-                if 0.0 <= sta_pct <= 1.5:
-                    desvio_pct = round((sta_pct - 1.0) * 100.0, 2)
-                else:
-                    desvio_pct = round(sta_pct - 100.0, 2)
-
-                if abs(desvio_pct) < th.limiar_desvio_pct:
-                    continue
-
-                if abs(desvio_pct) >= th.limiar_desvio_severo_pct:
-                    severidade = "alta"
-                else:
-                    severidade = "media"
-
-                contador += 1
-                sinais.append(
-                    Sinal(
-                        sinal_id=f"SIG-PBI-SO-{contador:03d}",
-                        tipo="desvio_sellout",
-                        sku=categoria,
-                        canal="geral",
-                        metrica="sellout_ton",
-                        valor=actual,
-                        referencia=plan,
-                        desvio_pct=desvio_pct,
-                        severidade=severidade,
-                        categoria=categoria,
-                        nr_impacto=abs(actual - plan),
-                    )
-                )
+    parte, contador = _adaptar_q2_doi(resultados_pbi, th, contador)
+    sinais.extend(parte)
+    parte, contador = _adaptar_q3_sellout(resultados_pbi, th, contador)
+    sinais.extend(parte)
+    parte, contador = _adaptar_q4_forward(resultados_pbi, th, contador)
+    sinais.extend(parte)
+    parte, contador = _adaptar_q5_oportunidade(resultados_pbi, th, contador)
+    sinais.extend(parte)
 
     return sinais
 

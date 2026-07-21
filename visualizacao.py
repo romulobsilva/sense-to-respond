@@ -152,9 +152,9 @@ def _resolver_caminho(
 
 
 def _rotulo_eixo_impacto(fonte_dados: Optional[str]) -> str:
-    """Rotulo do eixo X conforme unidade do run (PBI = ton proxy)."""
+    """Rotulo do eixo X conforme unidade do run."""
     if (fonte_dados or "").strip().lower() == "pbi":
-        return "Impacto priorizado (ton SO proxy)"
+        return "Impacto priorizado (NR USD / ton PBI)"
     return "Impacto priorizado (NR)"
 
 

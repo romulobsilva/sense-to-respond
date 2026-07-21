@@ -89,10 +89,15 @@ PBI_ARTIFACT_ID + PBI_CATALOG_PATH
 * `resultados_pbi` no state → sinais PoC → PDF reutilizado.
 * Testes com fixtures JSON (sem OAuth no CI).
 
-**Backlog pos-PoC (NÃO implementar na primeira entrega; ver planning
-Fase 1.7a e secao Backlog):**
+**Backlog pos-PoC (ver planning Fase 1.7a):**
 
 * Catálogo DAX Mondelez S&OE (DOI/SO/SI) quando PBI for publicado.
+  **Status:** feito (`catalogs/mondelez_s2r_v1.yaml`, Q1–Q3).
+* Cobertura executiva Forward/Oportunidades no caminho PBI
+  (`premissa_forward_furada`, `forward_oportunidade` via Q4/Q5).
+  **Status:** planning **1.7a.3** (aproximação snapshot vs CSV
+  `analisar_forward`; não exige ADR nova enquanto a regra permanecer
+  documentada no catálogo).
 * Popa / persistência de dataset / governança enterprise.
 * Entrega omnichannel (e-mail/WhatsApp) e loop de feedback.
 * HITL assíncrono da fila no caminho PBI.

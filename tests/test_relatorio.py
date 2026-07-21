@@ -203,7 +203,7 @@ def test_codigo_sem_sku_hardcoded() -> None:
 
 
 def test_html_fonte_pbi_metadados_e_unidade() -> None:
-    """Cabecalho PBI mostra catalog/artifact e impacto em ton SO."""
+    """Cabecalho PBI mostra catalog/artifact e unidade mista NR/ton."""
     resumo = _resumo()
     resumo["top_forward"] = []
     resumo["top_oportunidades"] = []
@@ -231,12 +231,11 @@ def test_html_fonte_pbi_metadados_e_unidade() -> None:
     assert "artifact=8d81650c-ea21-4fc4-8303-d067226f9442" in html_doc
     assert "Arquivo de entrada" not in html_doc
     assert "(simula" not in html_doc
-    assert "ton SO (proxy)" in html_doc
-    assert "Impacto prio. (ton SO (proxy))" in html_doc
-    assert "limiar_doi_gap_media" in html_doc
+    assert "NR USD / ton (PBI)" in html_doc
+    assert "Policy DOI Ideal" in html_doc
+    assert "Q4/Q5" in html_doc
     assert "sem entrar neste bloco" in html_doc
     assert "0 / 0 (sem candidatos no top)" in html_doc
-    assert "DOI_Policy" in html_doc
     assert "Graficos nao gerados" in html_doc
     assert "Forward / Plano" in html_doc
 

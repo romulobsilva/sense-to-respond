@@ -445,7 +445,7 @@ cadeia de depend\^encias estrita que facilita a depura\c{c}\~ao e auditoria.
 
 \section{Dual Ingress (Planilha vs PBI)}
 
-A PoC (ADR-0025 / planning 1.7a.2) admite dois ingressos at\'e o mesmo
+A PoC (ADR-0025 / planning 1.7a.2--1.7a.3) admite dois ingressos at\'e o mesmo
 motor $F_{\text{Sinais}}\circ\cdots\circ F_{\text{Output}}$:
 
 \begin{itemize}
@@ -459,7 +459,9 @@ motor $F_{\text{Sinais}}\circ\cdots\circ F_{\text{Output}}$:
 No ramo PBI, $\state$ recebe \texttt{fonte\_dados=pbi},
 \texttt{resultados\_pbi}, \texttt{catalog\_execucao} e sinais adaptados;
 \texttt{dataset\_canonico} pode permanecer vazio. Troca de modelo =
-novo YAML + \texttt{PBI\_ARTIFACT\_ID}.
+novo YAML + \texttt{PBI\_ARTIFACT\_ID}. Em 1.7a.3 o cat\'alogo Mondelez
+inclui Q4/Q5 (risco forward e oportunidade) como aproxima\c{c}\~ao
+snapshot face a \texttt{analisar\_forward} no CSV.
 
 
 \section{Modelo de Execu\c{c}\~ao com Retries}
