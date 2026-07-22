@@ -19,7 +19,10 @@ from datashield import (
     normalizar_dataset,
     processar_arquivo,
 )
-from dominion_pbi import rodar_dominion_pbi
+from dominion_pbi import (
+    exportar_resultados_pbi_para_auditoria,
+    rodar_dominion_pbi,
+)
 from powerbi_mcp import PowerBIQueryClient, criar_cliente_pbi
 from guardrails import (
     aplicar_output_guardrail,
@@ -84,6 +87,7 @@ TIPOS_RESUMO_AUDITORIA = frozenset({
     "input_guardrail_blocked",
     "catalog_execucao",
     "dominion_pbi",
+    "resultados_pbi_export",
 })
 
 
@@ -380,6 +384,50 @@ class Nexus:
                     "n_queries_ok": n_ok,
                 },
             )
+
+        # Full table dump for path-B validation (separate file; ADR-0012).
+        resultados_pbi = state.get("resultados_pbi")
+        execucao_list = state.get("catalog_execucao")
+        if isinstance(resultados_pbi, dict) and isinstance(execucao_list, list):
+            sessao_export = "sem_sessao"
+            if auditoria is not None and getattr(auditoria, "sessao_id", None):
+                sessao_export = str(auditoria.sessao_id)
+            try:
+                caminhos = exportar_resultados_pbi_para_auditoria(
+                    resultados_pbi=resultados_pbi,
+                    catalog_execucao=execucao_list,
+                    sessao_id=sessao_export,
+                    pbi_catalog_id=(
+                        str(state["pbi_catalog_id"])
+                        if state.get("pbi_catalog_id") is not None
+                        else None
+                    ),
+                    pbi_artifact_id=(
+                        str(state["pbi_artifact_id"])
+                        if state.get("pbi_artifact_id") is not None
+                        else None
+                    ),
+                )
+                state["resultados_pbi_export"] = caminhos
+                self._log(
+                    f"Export resultados_pbi: {caminhos.get('ultima')}"
+                )
+                if auditoria is not None:
+                    auditoria.registrar(
+                        "resultados_pbi_export",
+                        {
+                            "caminho_sessao": caminhos.get("sessao"),
+                            "caminho_ultima": caminhos.get("ultima"),
+                            "n_queries": len(resultados_pbi),
+                        },
+                    )
+            except (OSError, TypeError, ValueError) as exc:
+                self._log(f"Falha export resultados_pbi: {exc}")
+                if auditoria is not None:
+                    auditoria.registrar(
+                        "resultados_pbi_export",
+                        {"ok": False, "erro": str(exc)},
+                    )
 
     def _fase_dominion_mondelez(
         self,
@@ -915,11 +963,17 @@ class Nexus:
         )
         state["fila_nexus"] = [item.para_dict() for item in fila]
         self._log(f"Fila Nexus montada: {len(fila)} itens")
+        unidade_impacto = (
+            "NR USD"
+            if str(state.get("fonte_dados") or "").strip().lower() == "pbi"
+            else "R$"
+        )
         for item in fila:
             flag = "REVISAO OBRIGATORIA" if item.revisao_obrigatoria else "ok"
             self._log(
                 f"  {item.proposicao.proposicao_id} [{flag}] "
-                f"{item.proposicao.titulo} | R$ {item.proposicao.impacto_financeiro:.2f}"
+                f"{item.proposicao.titulo} | "
+                f"{unidade_impacto} {item.proposicao.impacto_financeiro:.2f}"
             )
 
         if auditoria is not None:
@@ -986,8 +1040,14 @@ class Nexus:
             ),
             reverse=True,
         )[:MAX_PROPOSICOES_EXPLICACAO]
+        unidade_impacto = (
+            "NR USD"
+            if str(state.get("fonte_dados") or "").strip().lower() == "pbi"
+            else "R$"
+        )
         contexto_props = "\n".join(
-            f"- {p.proposicao_id}: {p.titulo} (R$ {p.impacto_financeiro:.2f})"
+            f"- {p.proposicao_id}: {p.titulo} "
+            f"({unidade_impacto} {p.impacto_financeiro:.2f})"
             for p in top_props
         )
         texto_llm = self.agente.gerar_explicacao(

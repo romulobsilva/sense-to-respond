@@ -501,3 +501,87 @@ class TestOptimusPesoPrioridade:
         props = gerar_proposicoes([so, fwd], thresholds=th_neutro)
         assert props[0].tipo == "ajustar_plano_sellout"
         assert props[1].tipo == "questionar_premissa_plano"
+
+
+class TestCopiaForwardCoerenteComSinal:
+    """Descricao Optimus nao afirma SO acima com desvio negativo."""
+
+    def test_oportunidade_pbi_doi_nao_diz_so_acima(self) -> None:
+        sinal = Sinal(
+            sinal_id="SIG-PBI-OPP-001",
+            tipo="forward_oportunidade",
+            sku="PHI-ORIGINAL-150G",
+            canal="Modern Trade",
+            metrica="doi_oportunidade",
+            valor=16.0,
+            referencia=26.0,
+            desvio_pct=-38.5,
+            severidade="alta",
+            risco_forward="oportunidade",
+            nr_impacto=1000.0,
+            pais="Brazil",
+            marca="Philadelphia",
+        )
+        props = gerar_proposicoes([sinal])
+        assert len(props) == 1
+        desc = props[0].descricao
+        assert "SO acima do plano" not in desc
+        assert "Policy Ideal" in desc
+        assert "-38.5%" in desc
+
+    def test_oportunidade_csv_divergencia_negativa(self) -> None:
+        sinal = Sinal(
+            sinal_id="SIG-FWD-CSV",
+            tipo="forward_oportunidade",
+            sku="SKU-C",
+            canal="MT",
+            metrica="forward_divergencia",
+            valor=20.0,
+            referencia=30.0,
+            desvio_pct=-12.0,
+            severidade="media",
+            risco_forward="oportunidade",
+            nr_impacto=500.0,
+        )
+        props = gerar_proposicoes([sinal])
+        desc = props[0].descricao
+        assert "SO acima do plano" not in desc
+        assert "plano forward abaixo" in desc
+
+    def test_ruptura_pbi_nao_diz_so_acima(self) -> None:
+        sinal = Sinal(
+            sinal_id="SIG-PBI-FWD-001",
+            tipo="premissa_forward_furada",
+            sku="LAC-OVO-70-165G",
+            canal="Modern Trade",
+            metrica="forward_doi_plan",
+            valor=15.0,
+            referencia=25.0,
+            desvio_pct=-40.8,
+            severidade="alta",
+            risco_forward="ruptura",
+            nr_impacto=800.0,
+            pais="Brazil",
+        )
+        props = gerar_proposicoes([sinal])
+        desc = props[0].descricao
+        assert "SO acima do plano" not in desc
+        assert "RUPTURA" in desc
+        assert "-40.8%" in desc
+
+    def test_so_positivo_ainda_pode_dizer_acima(self) -> None:
+        sinal = Sinal(
+            sinal_id="SIG-OPP-SO",
+            tipo="forward_oportunidade",
+            sku="SKU-SO",
+            canal="MT",
+            metrica="sellout",
+            valor=22.0,
+            referencia=30.0,
+            desvio_pct=12.0,
+            severidade="media",
+            risco_forward="oportunidade",
+            nr_impacto=100.0,
+        )
+        props = gerar_proposicoes([sinal])
+        assert "SO acima do plano" in props[0].descricao

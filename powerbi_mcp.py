@@ -183,6 +183,32 @@ class RestPowerBIClient:
         )
 
 
+def _normalize_rest_column_name(name: str) -> str:
+    """
+    Map REST executeQueries keys to catalog/fixture style names.
+
+    Power BI REST often returns:
+      - "[DOIStatus]" -> "DOIStatus"
+      - "Fact_S2R[Country]" -> "Fact_S2R Country"
+    MCP/fixture use the unbracketed / space form; without this remap
+    the Dominion adapter drops every row (sinais=0).
+    """
+    raw = str(name).strip()
+    if not raw:
+        return raw
+    if raw.startswith("[") and raw.endswith("]") and "[" not in raw[1:-1]:
+        return raw[1:-1]
+    if "[" in raw and raw.endswith("]"):
+        table, _sep, rest = raw.partition("[")
+        col = rest[:-1].strip()
+        table_s = table.strip()
+        if table_s and col:
+            return f"{table_s} {col}"
+        if col:
+            return col
+    return raw
+
+
 def _parse_execute_queries_payload(
     payload: Mapping[str, Any],
     *,
@@ -218,14 +244,16 @@ def _parse_execute_queries_payload(
     if not isinstance(rows_raw, list):
         rows_raw = []
 
+    raw_keys: List[str] = []
     columns: List[str] = []
     rows: List[List[Any]] = []
     for row in rows_raw[:max_rows]:
         if not isinstance(row, Mapping):
             continue
-        if not columns:
-            columns = [str(k) for k in row.keys()]
-        rows.append([row.get(col) for col in columns])
+        if not raw_keys:
+            raw_keys = [str(k) for k in row.keys()]
+            columns = [_normalize_rest_column_name(k) for k in raw_keys]
+        rows.append([row.get(k) for k in raw_keys])
 
     return QueryResult(
         columns=columns,

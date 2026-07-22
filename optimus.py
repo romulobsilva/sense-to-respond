@@ -11,8 +11,8 @@ Tipos de proposicao suportados:
     - ajustar_plano_sellin: desvio sell-in >= 5%
     - rebalancear_estoque_doi: DOI fora da politica (gap >= 7 dias)
     - questionar_premissa_plano: plano forward diverge da tendencia recente
-    - capturar_oportunidade: SO acima + plano curto (DOI saudavel, ou dual
-      com ruptura quando DOI critico)
+    - capturar_oportunidade: plano curto / gap DOI vs ideal (texto conforme
+      metrica e sinal do desvio; nunca hardcode "SO acima" com % negativo)
     - investigar_desvio_persistente: desvio no mesmo sinal por N meses
     - investigar_desvio_canal: SI e SO divergem no mesmo SKU (futuro)
 
@@ -23,7 +23,7 @@ Detector de falso-positivo (DOI):
 
 Dual framing (forward):
   Ruptura primaria permanece; se plano subdimensionado, Optimus tambem
-  emite capturar_oportunidade (DOI critico + demanda acima do plano).
+  emite capturar_oportunidade (DOI critico + plano curto vs tendencia).
 
 Enriquecimento de causa-raiz (DOI overstock):
   Quando overstock detectado e SO desacelerando (so_ritmo do sinal de
@@ -131,6 +131,144 @@ def _dim_label(sinal: Sinal) -> str:
     if partes:
         return f" ({', '.join(partes)})"
     return ""
+
+
+def _direcao_vs_referencia(desvio_pct: float) -> str:
+    """
+    Map signed percent to acima / abaixo / alinhado.
+
+    Positive = above reference; negative = below. Near-zero uses alinhado.
+    """
+    if desvio_pct > 0.05:
+        return "acima"
+    if desvio_pct < -0.05:
+        return "abaixo"
+    return "alinhado"
+
+
+def _texto_divergencia_forward(desvio_pct: float) -> str:
+    """
+    Describe CSV forward_divergencia without claiming SO above when negative.
+
+    In analisar_forward, divergencia_forward_pct =
+    (SO_plan_fwd_diario - SO_real_diario) / SO_real_diario.
+    Negative => forward plan short vs recent SO trend.
+    """
+    if desvio_pct < -0.05:
+        return (
+            f"plano forward abaixo da tendencia de SO "
+            f"(divergencia {desvio_pct:+.1f}%)"
+        )
+    if desvio_pct > 0.05:
+        return (
+            f"plano forward acima da tendencia de SO "
+            f"(divergencia {desvio_pct:+.1f}%)"
+        )
+    return f"plano forward alinhado a tendencia de SO ({desvio_pct:+.1f}%)"
+
+
+def _texto_so_vs_plano(desvio_pct: float) -> str:
+    """Describe SO actual vs plan using the sign of desvio_pct."""
+    direcao = _direcao_vs_referencia(desvio_pct)
+    if direcao == "alinhado":
+        return f"SO alinhado ao plano ({desvio_pct:+.1f}%)"
+    return f"SO {direcao} do plano ({desvio_pct:+.1f}%)"
+
+
+def _descricao_forward_oportunidade(
+    sinal: Sinal,
+    dims: str,
+    doi_ruptura_dias: float,
+) -> str:
+    """
+    Build capturar_oportunidade description from signal metric.
+
+    PBI (doi_oportunidade): DOI gap vs Policy Ideal.
+    CSV (forward_divergencia): plan vs recent SO trend.
+    Other: SO vs plan with correct acima/abaixo.
+    """
+    dual = sinal.valor > 0 and sinal.valor < doi_ruptura_dias
+    prefixo = (
+        f"OPORTUNIDADE (dual com ruptura): SKU {sinal.sku}{dims}"
+        if dual
+        else f"OPORTUNIDADE: SKU {sinal.sku}{dims}"
+    )
+    metrica = (sinal.metrica or "").strip().lower()
+
+    if metrica == "doi_oportunidade":
+        gap_dias = sinal.valor - sinal.referencia
+        if dual:
+            return (
+                f"{prefixo} -- DOI atual {sinal.valor:.0f}d abaixo do "
+                f"Policy Ideal {sinal.referencia:.0f}d "
+                f"(gap {gap_dias:+.0f}d / {sinal.desvio_pct:+.1f}%). "
+                f"Subir SI/producao para recuperar cobertura e evitar falta."
+            )
+        return (
+            f"{prefixo} -- DOI atual {sinal.valor:.0f}d abaixo do "
+            f"Policy Ideal {sinal.referencia:.0f}d "
+            f"(gap {gap_dias:+.0f}d / {sinal.desvio_pct:+.1f}%). "
+            f"Aumentar sell-in para recuperar cobertura de estoque."
+        )
+
+    if metrica == "forward_divergencia":
+        div_txt = _texto_divergencia_forward(sinal.desvio_pct)
+        if dual:
+            return (
+                f"{prefixo} -- DOI {sinal.valor:.0f}d critico; {div_txt}. "
+                f"Subir SI/producao para capturar demanda e evitar falta."
+            )
+        return (
+            f"{prefixo} -- DOI {sinal.valor:.0f}d (faixa operacional); "
+            f"{div_txt}. Aumentar sell-in e realocar estoque para capturar "
+            f"demanda."
+        )
+
+    so_txt = _texto_so_vs_plano(sinal.desvio_pct)
+    if dual:
+        return (
+            f"{prefixo} -- {so_txt}, DOI {sinal.valor:.0f}d critico. "
+            f"Plano forward curto: subir SI/producao para capturar demanda "
+            f"e evitar falta."
+        )
+    return (
+        f"{prefixo} -- {so_txt}, DOI {sinal.valor:.0f}d (saudavel). "
+        f"Plano forward curto: aumentar sell-in e realocar estoque para "
+        f"capturar demanda."
+    )
+
+
+def _acao_premissa_forward(sinal: Sinal) -> str:
+    """Action sentence for questionar_premissa_plano by risco_forward."""
+    risco = sinal.risco_forward
+    metrica = (sinal.metrica or "").strip().lower()
+    if risco == "ruptura":
+        if metrica == "forward_doi_plan":
+            return (
+                "RISCO DE RUPTURA: DOI baixo vs plan/ideal; "
+                f"gap SI/DOI {sinal.desvio_pct:+.1f}%. "
+                "Revisar premissa forward e SI/producao."
+            )
+        if metrica == "forward_divergencia":
+            return (
+                "RISCO DE RUPTURA: DOI baixo; "
+                f"{_texto_divergencia_forward(sinal.desvio_pct)}. "
+                "Revisar premissa forward e SI/producao."
+            )
+        return (
+            "RISCO DE RUPTURA: DOI baixo; "
+            f"{_texto_so_vs_plano(sinal.desvio_pct)}. "
+            "Revisar premissa forward e SI/producao."
+        )
+    if risco == "overstock":
+        return (
+            "RISCO DE OVERSTOCK: DOI alto e plano forward "
+            "ainda preve SI elevado. Segurar sell-in."
+        )
+    return (
+        "PREMISSA FURADA: plano forward diverge da tendencia "
+        f"recente em {sinal.desvio_pct:+.1f}%. Revisar premissas."
+    )
 
 
 def _build_tendencia_index(
@@ -332,22 +470,7 @@ def gerar_proposicoes(
             impacto = _estimar_impacto_nr(sinal)
             tipo = "questionar_premissa_plano"
             dims = _dim_label(sinal)
-            risco = sinal.risco_forward
-            if risco == "ruptura":
-                acao = (
-                    "RISCO DE RUPTURA: DOI baixo e SO acima do plano, "
-                    "mas plano forward nao aumenta SI. Subir SI/producao."
-                )
-            elif risco == "overstock":
-                acao = (
-                    "RISCO DE OVERSTOCK: DOI alto e plano forward "
-                    "ainda preve SI elevado. Segurar sell-in."
-                )
-            else:
-                acao = (
-                    "PREMISSA FURADA: plano forward diverge da tendencia "
-                    f"recente em {sinal.desvio_pct:+.1f}%. Revisar premissas."
-                )
+            acao = _acao_premissa_forward(sinal)
             descricao = (
                 f"SKU {sinal.sku}{dims}: DOI atual "
                 f"{sinal.valor:.0f}d (plan forward {sinal.referencia:.0f}d). "
@@ -373,21 +496,9 @@ def gerar_proposicoes(
             _doi_rupt = 15.0
             if thresholds is not None:
                 _doi_rupt = float(thresholds.doi_ruptura_dias)
-            if sinal.valor > 0 and sinal.valor < _doi_rupt:
-                descricao = (
-                    f"OPORTUNIDADE (dual com ruptura): SKU {sinal.sku}{dims} "
-                    f"-- SO acima do plano ({sinal.desvio_pct:+.1f}%), "
-                    f"DOI {sinal.valor:.0f}d critico. Plano forward "
-                    f"subdimensionado: subir SI/producao para capturar "
-                    f"demanda e evitar falta."
-                )
-            else:
-                descricao = (
-                    f"OPORTUNIDADE: SKU {sinal.sku}{dims} -- SO acima do plano "
-                    f"({sinal.desvio_pct:+.1f}%), DOI {sinal.valor:.0f}d "
-                    f"(saudavel). Plano forward subdimensionado: aumentar "
-                    f"sell-in e realocar estoque para capturar demanda."
-                )
+            descricao = _descricao_forward_oportunidade(
+                sinal, dims, _doi_rupt
+            )
             proposicoes.append(Proposicao(
                 proposicao_id=f"P{contador}",
                 tipo=tipo,

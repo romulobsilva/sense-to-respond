@@ -7,6 +7,9 @@ adapter only maps rows into existing signal types consumed by Optimus.
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from config import DomainThresholds
@@ -18,6 +21,13 @@ from powerbi_catalog import (
 )
 from powerbi_mcp import PowerBIQueryClient, PowerBIQueryError
 from state_types import Sinal
+
+# Queries that feed Optimus prioritization (Daniel / path-B validation).
+QUERIES_PRIORIZACAO: Tuple[str, ...] = (
+    "Q2_top_alertas",
+    "Q4_forward_risco",
+    "Q5_forward_oportunidade",
+)
 
 
 def executar_catalogo_pbi(
@@ -89,14 +99,46 @@ def _row_as_dict(columns: Sequence[str], row: Sequence[Any]) -> Dict[str, Any]:
     return out
 
 
+def _normalize_column_key(name: str) -> str:
+    """
+    Normalize REST/MCP column labels for lookup.
+
+    Handles "[DOIStatus]" and "Fact_S2R[Country]" as well as
+    already-normalized "DOIStatus" / "Fact_S2R Country".
+    """
+    raw = str(name).strip()
+    if not raw:
+        return raw
+    if raw.startswith("[") and raw.endswith("]") and "[" not in raw[1:-1]:
+        return raw[1:-1]
+    if "[" in raw and raw.endswith("]"):
+        table, _sep, rest = raw.partition("[")
+        col = rest[:-1].strip()
+        table_s = table.strip()
+        if table_s and col:
+            return f"{table_s} {col}"
+        if col:
+            return col
+    return raw
+
+
 def _get_cell(row: Mapping[str, Any], *keys: str) -> Any:
     """Return first present key value (exact then suffix match)."""
     for key in keys:
         if key in row and row[key] is not None:
             return row[key]
+
+    normalized: Dict[str, Any] = {}
+    for col, value in row.items():
+        normalized[_normalize_column_key(str(col))] = value
+
+    for key in keys:
+        if key in normalized and normalized[key] is not None:
+            return normalized[key]
+
     # Power BI often prefixes with table name: "Fact_S2R Country"
     for key in keys:
-        for col, value in row.items():
+        for col, value in normalized.items():
             if col.endswith(f" {key}") or col.endswith(key):
                 if value is not None:
                     return value
@@ -435,6 +477,105 @@ def adaptar_resultados_pbi_para_sinais(
     sinais.extend(parte)
 
     return sinais
+
+
+def _client_source_hint(resultados_pbi: Mapping[str, Any]) -> str:
+    """
+    Infer fixture vs rest from QueryResult.meta.source when present.
+    """
+    sources: List[str] = []
+    for bloco in resultados_pbi.values():
+        if not isinstance(bloco, Mapping):
+            continue
+        meta = bloco.get("meta")
+        if isinstance(meta, Mapping):
+            src = meta.get("source")
+            if isinstance(src, str) and src.strip():
+                sources.append(src.strip().lower())
+    if not sources:
+        return "unknown"
+    uniq = sorted(set(sources))
+    if len(uniq) == 1:
+        return uniq[0]
+    return "mixed:" + ",".join(uniq)
+
+
+def exportar_resultados_pbi_para_auditoria(
+    *,
+    resultados_pbi: Mapping[str, Any],
+    catalog_execucao: Sequence[Mapping[str, Any]],
+    sessao_id: str,
+    pbi_catalog_id: Optional[str],
+    pbi_artifact_id: Optional[str],
+    diretorio: str | Path = "auditoria",
+) -> Dict[str, str]:
+    """
+    Persist full catalog tables for path-B / Daniel validation.
+
+    Writes two files under ``auditoria/`` (gitignored):
+      - resultados_pbi_<sessao_id>.json  (immutable per session)
+      - resultados_pbi_ultima.json       (always latest; easy handoff)
+
+    Does NOT embed row dumps into ultima_sessao.json (ADR-0012).
+
+    Returns:
+        Paths as strings: {\"sessao\": ..., \"ultima\": ...}.
+    """
+    out_dir = Path(diretorio)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_id = sessao_id.strip() if sessao_id.strip() else "sem_sessao"
+    # Keep only safe filename chars (ASCII).
+    safe_id = "".join(
+        ch if (ch.isalnum() or ch in "-_") else "-" for ch in safe_id
+    )
+
+    priorizacao: Dict[str, Any] = {}
+    for qid in QUERIES_PRIORIZACAO:
+        bloco = resultados_pbi.get(qid)
+        if isinstance(bloco, Mapping):
+            priorizacao[qid] = {
+                "columns": list(bloco.get("columns") or []),
+                "rows": list(bloco.get("rows") or []),
+                "meta": dict(bloco.get("meta") or {})
+                if isinstance(bloco.get("meta"), Mapping)
+                else {},
+            }
+
+    payload: Dict[str, Any] = {
+        "sessao_id": safe_id,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "fonte_dados": "pbi",
+        "pbi_catalog_id": pbi_catalog_id,
+        "pbi_artifact_id": pbi_artifact_id,
+        "client_source": _client_source_hint(resultados_pbi),
+        "catalog_execucao": [
+            dict(item) for item in catalog_execucao if isinstance(item, Mapping)
+        ],
+        "queries_priorizacao": list(QUERIES_PRIORIZACAO),
+        "resultados_pbi": {
+            str(qid): {
+                "columns": list(bloco.get("columns") or []),
+                "rows": list(bloco.get("rows") or []),
+                "meta": dict(bloco.get("meta") or {})
+                if isinstance(bloco.get("meta"), Mapping)
+                else {},
+            }
+            for qid, bloco in resultados_pbi.items()
+            if isinstance(bloco, Mapping)
+        },
+        "resultados_pbi_priorizacao": priorizacao,
+    }
+
+    path_sessao = out_dir / f"resultados_pbi_{safe_id}.json"
+    path_ultima = out_dir / "resultados_pbi_ultima.json"
+    texto = json.dumps(payload, indent=2, ensure_ascii=True)
+    path_sessao.write_text(texto, encoding="utf-8")
+    path_ultima.write_text(texto, encoding="utf-8")
+    return {
+        "sessao": str(path_sessao.resolve()),
+        "ultima": str(path_ultima.resolve()),
+    }
 
 
 def rodar_dominion_pbi(

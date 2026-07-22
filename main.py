@@ -67,7 +67,10 @@ def _imprimir_resumo_auditoria(
 MAX_FILA_TERMINAL = 30
 
 
-def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
+def _imprimir_fila_nexus(
+    fila: List[Dict[str, Any]],
+    fonte_dados: str = "csv",
+) -> None:
     """
     Exibe fila ranqueada para decisao humana (top-N + resumo).
     """
@@ -77,6 +80,11 @@ def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
 
     total = len(fila)
     exibir = fila[:MAX_FILA_TERMINAL]
+    unidade = (
+        "NR USD"
+        if str(fonte_dados or "").strip().lower() == "pbi"
+        else "R$"
+    )
 
     print("\n==============================")
     print(f"FILA NEXUS - top {len(exibir)} de {total} (human-in-the-loop)")
@@ -91,7 +99,7 @@ def _imprimir_fila_nexus(fila: List[Dict[str, Any]]) -> None:
         prop_id = prop.get("proposicao_id", "")
         titulo = prop.get("titulo", "")
         impacto = prop.get("impacto_financeiro", 0)
-        print(f"[{flag}] {prop_id} | {titulo} | R$ {impacto}")
+        print(f"[{flag}] {prop_id} | {titulo} | {unidade} {impacto}")
         if motivo:
             print(f"  motivo: {motivo}")
 
@@ -288,7 +296,10 @@ def main() -> None:
 
     fila = resultado.get("fila_nexus", [])
     if isinstance(fila, list):
-        _imprimir_fila_nexus(fila)
+        _imprimir_fila_nexus(
+            fila,
+            fonte_dados=str(resultado.get("fonte_dados") or fonte),
+        )
 
 
 if __name__ == "__main__":
