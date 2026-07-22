@@ -128,10 +128,14 @@ ChatResult:
 
 Auditoria de chat (eventos `chat_*` em JSON proprio ou trilha dedicada):
 
+* Arquivos: `auditoria/chat_<sessao_id>.json`, `auditoria/chat_ultima.json`
 * Registrar: sessao_id, pergunta (truncada), tools chamadas (nome),
-  transport, erros.
+  transport, `openai_model` (meta), erros.
 * Nao registrar: token Bearer, dumps tabulares completos de MCP,
   system prompt completo.
+
+REPL atual: cada turno gera nova sessao (sem historico). Backlog:
+uma sessao com multiplos turns (`AgentSession`).
 
 ---
 

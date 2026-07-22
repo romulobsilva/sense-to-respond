@@ -232,8 +232,12 @@ Regras do caminho PBI (batch / path B):
 
 Chat PBI analitico (`--modo chat`, ADR-0026 / planning 1.7b) e
 **paralelo** ao batch: Microsoft Agent Framework + MCP; GenerateQuery
-so nesse modo. Nucleo `chat_pbi.run` -> `ChatResult` (UI-agnostic);
-CLI imprime Markdown estruturado. Nao misturar chat com Optimus/PDF.
+so nesse modo (fallback; preferir ExecuteQuery com DAX). Nucleo
+`chat_pbi.run` -> `ChatResult` (UI-agnostic); CLI imprime Markdown
+estruturado (agregado + SKUs em perguntas de cobertura/risco).
+Modelo do chat: `CHAT_OPENAI_MODEL` (default `gpt-5.4`); batch fica em
+`OPENAI_MODEL`. REPL existe sem historico multi-turno (backlog).
+Nao misturar chat com Optimus/PDF.
 
 Nao implementar no MVP sem atualizacao previa da spec:
 
@@ -653,6 +657,8 @@ Se alterou Chat PBI (ADR-0026):
 * manter batch sem GenerateQuery;
 * testes em `tests/test_chat_pbi.py` com transport mock;
 * nao acoplar `chat_pbi` a Streamlit/React;
+* documentar mudancas de playbook/modelo em architecture + ADR-0026;
+* smoke live: `--modo chat` com `CHAT_PBI_TRANSPORT=mcp` + token;
 * nao commitar tokens/auth de `.cursor/mcp.json`;
 * fixtures JSON para CI sem OAuth.
 

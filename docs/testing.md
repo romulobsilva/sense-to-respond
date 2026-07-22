@@ -922,13 +922,16 @@ arquivo `auditoria/resultados_pbi_ultima.json` gerado.
 ```text
 input guardrail bloqueia pergunta curta/injecao     [x] test_chat_pbi
 ChatResult shape (markdown + meta)                  [x]
+playbook/instrucoes (completude + GenerateQuery fb) [x]
 transport mock: tools injetadas sem OAuth           [x]
 CLI --modo chat --pergunta imprime Markdown         [x]
 batch --fonte pbi nao quebra com codigo chat        [x] test_dominion_pbi
 GenerateQuery ausente no caminho batch              [x] invariante ADR-0025
+smoke live estoque curto prazo (gpt-5.4)            [x] manual 2026-07-22
+REPL multi-turno com historico                      [ ] backlog
 ```
 
-Comando CI local (apos implementacao):
+Comando CI local:
 
 ```text
 PYTEST_ADDOPTS= python -m pytest tests/test_chat_pbi.py -q -c /dev/null --rootdir=.
@@ -938,10 +941,16 @@ Smoke manual chat (nao CI):
 
 ```text
 az login --allow-no-subscriptions
+source .venv/bin/activate
 export PBI_ACCESS_TOKEN="$(az account get-access-token --resource https://analysis.windows.net/powerbi/api --query accessToken -o tsv)"
 export CHAT_PBI_TRANSPORT=mcp
+# CHAT_OPENAI_MODEL default = gpt-5.4
 python main.py --modo chat --pergunta "Tem estoque suficiente para atender a demanda no curto prazo?"
 ```
+
+Esperado: rodape `transport=mcp model=gpt-5.4`; Markdown com KPIs
+agregados + tabela de SKUs understock + conclusao parcial; numeros
+do modelo (nao inventados).
 
 ### Backlog pos-PoC (nao exigir agora)
 
@@ -949,6 +958,7 @@ python main.py --modo chat --pergunta "Tem estoque suficiente para atender a dem
 CI live contra Fabric (auth/custo)
 parity CSV Mondelez vs PBI Mondelez (mesmos KPIs)
 UI React sobre ChatResult
+REPL AgentSession (historico multi-turno)
 ```
 
 ---

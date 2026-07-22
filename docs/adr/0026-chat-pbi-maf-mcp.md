@@ -200,7 +200,14 @@ React depois.
 * [x] Batch `--fonte pbi` continua passando testes atuais.
 * [x] Testes mock sem OAuth no CI.
 * [x] Sem dependencia de React/Streamlit no nucleo.
-* [ ] Smoke live MCP manual (auth Entra + perguntas DOI/estoque).
+* [x] Smoke live MCP manual (estoque curto prazo; `model=gpt-5.4`,
+  DOI ~28,8d + tabela SKUs understock; 2026-07-22).
+
+### Backlog pos-MVP (esta ADR)
+
+* [ ] REPL com historico multi-turno (`AgentSession` em RAM)
+* [ ] UI React/API sobre `ChatResult`
+* [ ] DefaultAzureCredential / Entra sem Bearer manual
 
 ---
 

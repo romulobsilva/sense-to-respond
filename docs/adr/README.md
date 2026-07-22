@@ -98,7 +98,7 @@ A decisao foi descartada e nao deve guiar implementacao.
 | ADR-0023 | Comunicacao Pipeline-UI via JSON                          | Aceito   | Arquivos JSON em approvals/ para HITL assincrono       |
 | ADR-0024 | Portabilidade Multi-Dominio                               | Aceito   | Thresholds, NR, schema, forward configuraveis          |
 | ADR-0025 | Dois Caminhos Planilha vs PBI/MCP                         | Aceito   | Catalogo DAX; PoC Agua; Mondelez PBI no backlog        |
-| ADR-0026 | Chat PBI analitico via MAF + MCP                          | Aceito   | `--modo chat` paralelo ao batch; GenerateQuery so chat |
+| ADR-0026 | Chat PBI analitico via MAF + MCP                          | Aceito   | `--modo chat`; gpt-5.4; ExecuteQuery-first; smoke OK   |
 
 ---
 

@@ -121,22 +121,40 @@ nao copia 1:1 de `analisar_forward` no CSV.
 Path B live: `PBI_FIXTURE_PATH` vazio + `PBI_ACCESS_TOKEN` (Bearer).
 Fixture tem prioridade se setada (CI/offline).
 
-### 3.3 Chat PBI analitico (1.7b / ADR-0026)
+### 3.3 Chat PBI analitico (1.7b / ADR-0026) -- implementado
 
-Modo paralelo (nao substitui 3.2):
+Modo paralelo (nao substitui 3.2). Modulo: `chat_pbi.py`.
 
 ```
---modo chat [--pergunta "..."]
+--modo chat [--pergunta "..."] [--chat-transport mcp|rest|mock]
   -> input guardrail
   -> chat_pbi.run(pergunta) -> ChatResult
   -> Microsoft Agent Framework + tools MCP Power BI
-       (GetSemanticModelSchema / GenerateQuery / ExecuteQuery)
-  -> answer_markdown estruturado (KPIs + tabelas + conclusao)
+       (GetSemanticModelSchema / ExecuteQuery;
+        GenerateQuery = fallback max 1x)
+  -> answer_markdown estruturado (KPIs + tabelas SKU + conclusao)
 ```
 
-CLI imprime Markdown no terminal; nucleo e UI-agnostic (React = fase 2+).
-Transport: `CHAT_PBI_TRANSPORT=mcp|rest|mock` (MCP preferido; REST
-fallback so ExecuteQuery; mock no CI).
+CLI:
+
+* one-shot: `--pergunta "..."`;
+* REPL: `python main.py --modo chat` (loop no terminal; **MVP sem
+  historico multi-turno** -- cada `>` e turno isolado; backlog:
+  `AgentSession` em RAM).
+
+Nucleo UI-agnostic (React = fase 2+). Transport:
+`CHAT_PBI_TRANSPORT=mcp|rest|mock` (MCP preferido; REST = ExecuteQuery
+apenas; mock no CI).
+
+Modelo LLM do chat: `CHAT_OPENAI_MODEL` (default **`gpt-5.4`**);
+batch/Critic permanecem em `OPENAI_MODEL`.
+
+Playbook (qualquer pergunta NL): preferir DAX manual + ExecuteQuery;
+completude em cobertura/risco = agregado + 5-10 SKUs + conclusao
+parcial. Hints do catalogo YAML injetados como atalho.
+
+Smoke live validado (2026-07-22): pergunta de estoque curto prazo com
+DOI ~28,8d, Last Actual Date 2026-07-07, tabela de SKUs understock.
 
 Batch S&OE permanece sem GenerateQuery e sem conversa livre entre agentes.
 
@@ -325,7 +343,7 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 | Tools parametrizadas Mondelez | Implementado (CSV) | Fase 1.5b | ADR-0019 |
 | Dual ingress PBI/MCP (catalogo DAX) | Implementado (1.7a.2--1.7a.4) | Fase 1.7a | ADR-0025 |
 | Catalogo DAX Mondelez (PBI publicado) | Implementado (`mondelez_s2r_v1`) | 1.7a.2+ | ADR-0025 |
-| Chat PBI analitico (MAF + MCP) | MVP CLI implementado (smoke live pendente) | Fase 1.7b | ADR-0026 |
+| Chat PBI analitico (MAF + MCP) | MVP CLI + smoke live OK; REPL sem memoria | Fase 1.7b | ADR-0026 |
 | Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |
 | Dominion expandido (DOI, canal) | Parcial / evolutivo | Fase 1.6 | - |
 | Kedro pipelines | Planejado | Fase 2 | - |

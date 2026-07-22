@@ -49,6 +49,16 @@ Modo legado (apenas Dominion + explicacao):
 python main.py --modo legado
 ```
 
+Chat analitico Power BI (ADR-0026; paralelo ao batch; nao gera PDF):
+
+```bash
+# one-shot (requer PBI_ACCESS_TOKEN + PBI_ARTIFACT_ID; modelo default gpt-5.4)
+python main.py --modo chat --pergunta "Tem estoque suficiente no curto prazo?"
+
+# REPL no terminal (cada turno ainda e isolado; historico = backlog)
+python main.py --modo chat
+```
+
 Salvar auditoria em arquivo customizado:
 
 ```bash
@@ -72,6 +82,7 @@ Componentes principais:
 | **Optimus** | `optimus.py` | Nao | Transforma sinais em propostas (deterministico) |
 | **Validador** | `validator.py` | Nao | Checa regras formais (sim/nao) |
 | **Critic** | `critic.py` | Sim | Julga coerencia (LLM leitura-only) |
+| **Chat PBI** | `chat_pbi.py` | Sim | Q&A analitico MCP (ADR-0026; paralelo ao batch) |
 | **Guardrails** | `guardrails.py` | Nao | Input/output guardrails |
 | **State** | `state_types.py` | Nao | Blackboard compartilhado entre agentes |
 

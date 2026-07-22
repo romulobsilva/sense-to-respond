@@ -137,7 +137,11 @@ Ver `docs/contracts/examples/agua_io_catalog.example.yaml`.
 
 Este contrato governa o **batch** (catalogo versionado).
 
-O chat analitico (`--modo chat`) pode gerar DAX ad hoc via
-`GenerateQuery` + `ExecuteQuery` MCP e **nao** precisa passar pelo
-YAML de catalogo. O catalogo continua sendo a fonte de verdade do
+O chat analitico (`--modo chat`) usa tools MCP ad hoc e **nao** precisa
+passar pelo YAML. O catalogo continua sendo a fonte de verdade do
 relatorio S&OE; o chat nao o substitui.
+
+O nucleo do chat (`chat_pbi`) pode injetar **hints** do YAML
+(`PBI_CATALOG_PATH`) no prompt (medidas/query_ids) como atalho; o
+playbook prefere `ExecuteQuery` com DAX manual e trata `GenerateQuery`
+como fallback.

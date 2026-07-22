@@ -575,14 +575,18 @@ Ref: ADR-0026, `docs/architecture.md` §3.3.
 
 - [x] Spec/ADR-0026: `--modo chat` vs `--modo nexus` (batch intacto)
 - [x] Microsoft Agent Framework (MAF) + tools MCP Power BI
-  (schema / ExecuteQuery / GenerateQuery no chat; transport mcp)
+  (schema / ExecuteQuery; GenerateQuery fallback; transport mcp)
 - [x] Nucleo `chat_pbi.run` -> `ChatResult` (UI-agnostic)
 - [x] CLI `--modo chat` / `--pergunta` + REPL; Markdown estruturado
 - [x] Auth Bearer (`PBI_ACCESS_TOKEN`) + transport `mcp|rest|mock`
+- [x] `CHAT_OPENAI_MODEL` default `gpt-5.4` (batch usa `OPENAI_MODEL`)
+- [x] Playbook completude (agregado + SKUs + conclusao parcial)
 - [x] Auditoria de sessao de chat (`auditoria/chat_*.json`)
 - [x] Testes mock CI (`tests/test_chat_pbi.py`)
-- [ ] Smoke live MCP com perguntas DOI/estoque (manual)
+- [x] Smoke live MCP: estoque curto prazo (DOI/SKU; model=gpt-5.4)
 - [x] Docs architecture/rules/contracts/testing: fronteira chat vs batch
+- [ ] REPL com historico multi-turno (`AgentSession` em RAM)
+- [ ] UI React sobre `ChatResult` (fase 2+)
 
 ### Backlog pos-PoC PBI (apos 1.7a.2)
 
@@ -590,7 +594,7 @@ Ref: ADR-0026, `docs/architecture.md` §3.3.
 - [x] Swap documentado: `catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID`
 - [x] Paridade parcial forward/opps via Q4/Q5 (1.7a.3; nao e 1:1 com CSV)
 - [x] Path B live REST hardening + export validacao (1.7a.4)
-- [x] Chat PBI via MAF/MCP (1.7b MVP CLI; smoke live pendente)
+- [x] Chat PBI via MAF/MCP (1.7b MVP CLI + smoke live)
 - [ ] Alinhar tipos de sinal PoC Agua com whitelist Mondelez
 - [ ] Paridade total CSV: janela temporal + `forward_marker` no modelo PBI
 - [ ] Popa / persistencia dataset / governanca (desenho produto)

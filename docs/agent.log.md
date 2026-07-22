@@ -6,6 +6,31 @@
 
 ---
 
+## Sessao 27 - 2026-07-22 - Chat PBI hardening + sync docs pos-smoke
+
+### Contexto
+- Smoke live MCP com `gpt-5.4`: resposta completa (agregado + SKUs)
+- Usuario pediu sync de architecture/rules/ADRs apos a funcionalidade
+
+### Decisoes
+- Default chat: `CHAT_OPENAI_MODEL=gpt-5.4` (batch em `OPENAI_MODEL`)
+- Playbook: ExecuteQuery-first; GenerateQuery fallback; completude A/B/C
+- REPL existe sem historico; multi-turno = backlog
+- Smoke live 1.7b marcado como feito
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `chat_pbi.py` / `config.py` / `.env.example` | playbook + gpt-5.4 |
+| ADR-0026, architecture, planning, contracts, testing, rules | sync pos-smoke |
+| agent.log, LaTeX (nota) | sessao 27 |
+
+### Proximos passos
+- REPL com `AgentSession` (contexto multi-turno)
+- UI React sobre `ChatResult`
+
+---
+
 ## Sessao 26 - 2026-07-22 - Spec + implementacao Chat PBI 1.7b (ADR-0026)
 
 ### Contexto
@@ -25,8 +50,8 @@
 | `chat_pbi.py` / `main.py` / tests | implementacao |
 
 ### Proximos passos
-- Smoke live MCP com perguntas DOI/estoque
-- UI React sobre `ChatResult` (fase 2+)
+- (feito na sessao 27) Smoke live + sync docs
+- UI React / REPL multi-turno (backlog)
 
 ---
 

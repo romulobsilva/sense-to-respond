@@ -522,15 +522,17 @@ chat_pbi.run(pergunta, ...) -> ChatResult
   Entrada: pergunta NL (+ sessao opcional)
   Saida: answer_markdown, tables[], citations[], meta
   Numeros so via tools abaixo; CLI so imprime.
+  Modelo: CHAT_OPENAI_MODEL (default gpt-5.4)
 
 GetSemanticModelSchema(artifactId) -> schema/meta
   io_tool (MCP primario)
 
-GenerateQuery(artifactId, userInput, schemaSelection?, ...) -> DAX
-  io_tool (MCP; chat only)
-
 ExecuteQuery(artifactId, daxQueries[], maxRows?) -> rows
   io_tool (MCP primario; fallback REST RestPowerBIClient)
+  Preferido no playbook (DAX manual / hints do catalogo)
+
+GenerateQuery(artifactId, userInput, schemaSelection?, ...) -> DAX
+  io_tool (MCP; chat only; FALLBACK max 1x se DAX nao estiver claro)
 ```
 
 Transport (`CHAT_PBI_TRANSPORT`):
@@ -539,9 +541,13 @@ Transport (`CHAT_PBI_TRANSPORT`):
 * `rest` (fallback): ExecuteQuery via REST; GenerateQuery indisponivel
 * `mock` (CI): fixtures/tools injetadas; sem OAuth
 
-Backlog pos-PoC restante:
+Playbook/completude: ver ADR-0026 D6 (agregado + 5-10 SKUs em
+perguntas de cobertura/risco).
+
+Backlog restante:
 
 ```text
+REPL multi-turno (AgentSession)
 connector HTTP Fabric standalone (cron)
 alinhar tipos sinal Agua <-> Mondelez
 paridade temporal total (forward_marker) no modelo PBI

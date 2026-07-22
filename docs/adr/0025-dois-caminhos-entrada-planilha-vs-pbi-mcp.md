@@ -66,9 +66,9 @@ queries. Usa catálogo pré-definido.
 
 * Caminho crítico do relatório: apenas `ExecuteQuery` com DAX do
   catálogo.
-* `GenerateQuery` fica fora do batch (opcional só em modo chat/IDE;
-  chat analitico planejado em planning **1.7b** com Microsoft Agent
-  Framework + MCP — nao implementado nesta ADR).
+* `GenerateQuery` fica fora do batch (opcional so em modo chat/IDE;
+  chat analitico em ADR-0026 / planning **1.7b** com Microsoft Agent
+  Framework + MCP — implementado; nao misturar com o relatorio).
 * Números vêm do semantic model (DAX). Harness não reimplementa a
   métrica de negócio em Python como fallback padrão.
 * Path B live (REST `executeQueries`): o connector normaliza nomes de
@@ -108,7 +108,7 @@ PBI_ARTIFACT_ID + PBI_CATALOG_PATH
 * Hardening REST live + export `resultados_pbi` para validação.
   **Status:** planning **1.7a.4** feito.
 * Chat PBI analitico (`--modo chat`, MAF + MCP). **Status:** ADR-0026
-  + planning **1.7b** (paralelo ao batch; nao misturar com relatorio).
+  + planning **1.7b** implementado (MVP CLI + smoke; paralelo ao batch).
 * Popa / persistência de dataset / governança enterprise.
 * Entrega omnichannel (e-mail/WhatsApp) e loop de feedback.
 * HITL assíncrono da fila no caminho PBI.
