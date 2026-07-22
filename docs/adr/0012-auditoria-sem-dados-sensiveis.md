@@ -716,6 +716,19 @@ ADR-0011 - Prompts com JSON validado, retry e fallback
 
 ---
 
+## Amend (2026-07-22) - Dump PBI fora de ultima_sessao
+
+No caminho `--fonte pbi` (planning 1.7a.4):
+
+* `ultima_sessao.json` continua so com meta (`catalog_execucao`,
+  `resultados_pbi_export` com caminhos).
+* Tabelas completas de `resultados_pbi` vao para
+  `auditoria/resultados_pbi_*.json` (ja em `.gitignore`).
+* Objetivo: validacao externa (ex.: comparar DAX local vs run live)
+  sem violar a regra de nao embutir dataset no diario principal.
+
+---
+
 ## Observacoes
 
 Auditoria segura nao significa auditoria fraca.

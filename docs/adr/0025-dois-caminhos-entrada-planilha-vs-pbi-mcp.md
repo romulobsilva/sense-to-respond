@@ -66,9 +66,17 @@ queries. Usa catálogo pré-definido.
 
 * Caminho crítico do relatório: apenas `ExecuteQuery` com DAX do
   catálogo.
-* `GenerateQuery` fica fora do batch (opcional só em modo chat/IDE).
+* `GenerateQuery` fica fora do batch (opcional só em modo chat/IDE;
+  chat analitico planejado em planning **1.7b** com Microsoft Agent
+  Framework + MCP — nao implementado nesta ADR).
 * Números vêm do semantic model (DAX). Harness não reimplementa a
   métrica de negócio em Python como fallback padrão.
+* Path B live (REST `executeQueries`): o connector normaliza nomes de
+  coluna (`[Col]` / `Table[Col]`) para o estilo do catálogo antes do
+  adaptador (planning **1.7a.4**).
+* Dump tabular para validação externa: arquivos
+  `auditoria/resultados_pbi_*.json` (gitignored), não embutidos em
+  `ultima_sessao.json` (ADR-0012).
 
 ### D3 - Catálogo trocável (PoC Água → Mondelez depois)
 
@@ -95,9 +103,12 @@ PBI_ARTIFACT_ID + PBI_CATALOG_PATH
   **Status:** feito (`catalogs/mondelez_s2r_v1.yaml`, Q1–Q3).
 * Cobertura executiva Forward/Oportunidades no caminho PBI
   (`premissa_forward_furada`, `forward_oportunidade` via Q4/Q5).
-  **Status:** planning **1.7a.3** (aproximação snapshot vs CSV
-  `analisar_forward`; não exige ADR nova enquanto a regra permanecer
-  documentada no catálogo).
+  **Status:** planning **1.7a.3** feito (aproximação snapshot vs CSV
+  `analisar_forward`).
+* Hardening REST live + export `resultados_pbi` para validação.
+  **Status:** planning **1.7a.4** feito.
+* Chat PBI analitico (`--modo chat`, MAF + MCP). **Status:** ADR-0026
+  + planning **1.7b** (paralelo ao batch; nao misturar com relatorio).
 * Popa / persistência de dataset / governança enterprise.
 * Entrega omnichannel (e-mail/WhatsApp) e loop de feedback.
 * HITL assíncrono da fila no caminho PBI.

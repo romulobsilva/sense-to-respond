@@ -44,7 +44,8 @@ IA = LLM + Harness
 | **Config** | `config.py`, `.env` | Parametros (modelo, limiar, retries) |
 | **HITL** | `hitl.py` | Protocolo abstrato de aprovacao humana (ADR-0022) |
 | **DataShield** | `datashield.py` | Leitura, mapeamento semantico, ETL, normalizacao |
-| **Entrada** | `main.py` | CLI com modos `nexus` e `legado` |
+| **Entrada** | `main.py` | CLI com modos `nexus`, `legado` e `chat` (ADR-0026) |
+| **Chat PBI** | `chat_pbi.py` | Modo analitico MAF + MCP (paralelo ao batch) |
 | **UI Demo** | `app_streamlit.py` | Interface Streamlit para demo EY (ADR-0022) |
 
 ## 3. Pipeline MVP
@@ -94,7 +95,7 @@ Quando nenhum arquivo e fornecido, o pipeline usa dados simulados em memoria:
 Input Guardrail -> Dominion (dados simulados) -> Sinais -> Optimus -> ... -> Usuario
 ```
 
-### 3.2 Modo PBI / MCP (PoC 1.7a.2 + 1.7a.3)
+### 3.2 Modo PBI / MCP (PoC 1.7a.2 + 1.7a.3 + hardening 1.7a.4)
 
 Modulos: `powerbi_catalog.py`, `powerbi_mcp.py`, `dominion_pbi.py`.
 CLI: `python main.py --modo nexus --fonte pbi` (exige catalogo +
@@ -103,6 +104,7 @@ fixture ou token; nao usar junto com `--input`).
 ```
 Catalogo YAML (queries EVALUATE)
   -> ExecuteQuery(artifactId, dax)  [fixture | REST]
+  -> normalizacao de colunas REST ([Col] / Table[Col] -> catalog style)
   -> resultados_pbi
   -> adaptador -> Sinais
        Q2 doi_fora_politica (Policy Ideal)
@@ -110,10 +112,33 @@ Catalogo YAML (queries EVALUATE)
        Q4 premissa_forward_furada   [1.7a.3]
        Q5 forward_oportunidade      [1.7a.3]
   -> mesmo motor Optimus...PDF
+  -> export auditoria/resultados_pbi_*.json (validacao; gitignored)
 ```
 
 Q4/Q5 sao aproximacao snapshot (DOI Status + SI Gap / Policy Ideal),
 nao copia 1:1 de `analisar_forward` no CSV.
+
+Path B live: `PBI_FIXTURE_PATH` vazio + `PBI_ACCESS_TOKEN` (Bearer).
+Fixture tem prioridade se setada (CI/offline).
+
+### 3.3 Chat PBI analitico (1.7b / ADR-0026)
+
+Modo paralelo (nao substitui 3.2):
+
+```
+--modo chat [--pergunta "..."]
+  -> input guardrail
+  -> chat_pbi.run(pergunta) -> ChatResult
+  -> Microsoft Agent Framework + tools MCP Power BI
+       (GetSemanticModelSchema / GenerateQuery / ExecuteQuery)
+  -> answer_markdown estruturado (KPIs + tabelas + conclusao)
+```
+
+CLI imprime Markdown no terminal; nucleo e UI-agnostic (React = fase 2+).
+Transport: `CHAT_PBI_TRANSPORT=mcp|rest|mock` (MCP preferido; REST
+fallback so ExecuteQuery; mock no CI).
+
+Batch S&OE permanece sem GenerateQuery e sem conversa livre entre agentes.
 
 ## 4. State compartilhado (blackboard)
 
@@ -136,6 +161,7 @@ Sem conversa livre entre LLMs.
 | `pbi_catalog_id` | Dominion PBI | Auditoria | Id do YAML de catalogo |
 | `pbi_artifact_id` | Nexus/config | Dominion PBI | GUID do semantic model |
 | `catalog_execucao` | Dominion PBI | Auditoria | Meta por query_id (ok/erro/n_rows) |
+| `resultados_pbi_export` | Nexus PBI | Auditoria/humano | Caminhos do dump em `auditoria/` (1.7a.4) |
 | `sinais[]` | Sinais | Optimus, Critic |
 | `proposicoes[]` | Optimus | Validador, Critic, Fila |
 | `validacao` | Validador | Nexus |
@@ -297,12 +323,13 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 | DataShield Lite (3 niveis) | Parcial (N1 ok; N2/N3 planejado) | Fase 1.5 | ADR-0020 |
 | HITL Streamlit (demo EY) | Planejado | Fase 1.5c | ADR-0022 |
 | Tools parametrizadas Mondelez | Implementado (CSV) | Fase 1.5b | ADR-0019 |
-| Dual ingress PBI/MCP (catalogo DAX) | Spec pronta; codigo PoC pendente | Fase 1.7a | ADR-0025 |
-| Catalogo DAX Mondelez (PBI publicado) | Backlog pos-PoC | pos-1.7a | ADR-0025 |
+| Dual ingress PBI/MCP (catalogo DAX) | Implementado (1.7a.2--1.7a.4) | Fase 1.7a | ADR-0025 |
+| Catalogo DAX Mondelez (PBI publicado) | Implementado (`mondelez_s2r_v1`) | 1.7a.2+ | ADR-0025 |
+| Chat PBI analitico (MAF + MCP) | MVP CLI implementado (smoke live pendente) | Fase 1.7b | ADR-0026 |
 | Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |
 | Dominion expandido (DOI, canal) | Parcial / evolutivo | Fase 1.6 | - |
 | Kedro pipelines | Planejado | Fase 2 | - |
-| Microsoft Agent Framework | Planejado | Fase 2 | - |
+| Microsoft Agent Framework (batch/MOE) | Planejado (chat usa MAF em 1.7b) | Fase 2 / 1.7b | ADR-0026 |
 | Bridge (execucao ERP/WMS) | Planejado | Fase 4 | ADR-0016 |
 | MOE router dinamico | Planejado | Fase 2/3 | ADR-0017 |
 | Consenso multi-agente | Planejado | Fase 3 | ADR-0017 |
@@ -317,7 +344,7 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 
 ## 10. Decisoes arquiteturais registradas
 
-Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0025). Resumo:
+Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0026). Resumo:
 
 | ADR | Decisao | Motivo |
 |---|---|---|
@@ -346,12 +373,13 @@ Decisoes formais em `docs/adr/` (ADR-0001 a ADR-0025). Resumo:
 | 0023 | Comunicacao pipeline-UI via JSON | Arquivos JSON em approvals/ |
 | 0024 | Portabilidade multi-dominio | Thresholds, NR, schema, forward configuraveis |
 | 0025 | Dois caminhos planilha vs PBI/MCP | Catalogo DAX; swap Mondelez = novo YAML |
+| 0026 | Chat PBI analitico via MAF + MCP | Paralelo ao batch; GenerateQuery so no chat |
 
 ## 11. Documentos de referencia
 
 | Documento | Caminho | Descricao |
 |---|---|---|
-| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0025) |
+| ADRs | `docs/adr/` | Decisoes arquiteturais formais (0001-0026) |
 | Contratos | `docs/contracts/` | state_contract.md, tool_contract.md |
 | Prompts | `docs/prompts.md` | Contratos de prompts LLM |
 | Testes | `docs/testing.md` | Guia de testes e invariantes |

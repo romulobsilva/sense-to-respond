@@ -6,6 +6,58 @@
 
 ---
 
+## Sessao 26 - 2026-07-22 - Spec + implementacao Chat PBI 1.7b (ADR-0026)
+
+### Contexto
+- Usuario validou respostas estruturadas via MCP no Cursor
+- Pediu atualizar ADRs/contratos/arquitetura e implementar `--modo chat`
+
+### Decisoes
+- ADR-0026 Aceito: chat paralelo ao batch; MAF + MCP; GenerateQuery so chat
+- Nucleo UI-agnostic `ChatResult`; MVP CLI; React fase 2+
+- Transport `mcp|rest|mock`; REST = fallback parcial
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `docs/adr/0026-chat-pbi-maf-mcp.md` | nova ADR |
+| architecture, planning, contracts, testing, rules, agent.log | sync 1.7b |
+| `chat_pbi.py` / `main.py` / tests | implementacao |
+
+### Proximos passos
+- Smoke live MCP com perguntas DOI/estoque
+- UI React sobre `ChatResult` (fase 2+)
+
+---
+
+## Sessao 25 - 2026-07-22 - Path B live + export + docs sync (1.7a.4)
+
+### Contexto
+- Path B live com token: queries OK mas sinais=0 (colunas REST com brackets)
+- Critic rejeitava copia "SO acima do plano (-X%)"
+- Daniel precisa validar DAX + tabelas do harness (mesmo PBIX, outra lib)
+- Desenho de `--modo chat` com Microsoft Agent Framework (nao implementado)
+
+### Decisoes
+- Normalizar chaves REST no connector; export tabular em `auditoria/`
+  separado de `ultima_sessao.json` (ADR-0012)
+- Copia Optimus por metrica/sinal do desvio
+- Chat/MAF = planning 1.7b paralelo ao batch; sem redesenhar S&OE
+- Commit codigo: `4e971ca`; docs sync nesta sessao
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `powerbi_mcp.py` / `dominion_pbi.py` / `optimus.py` / `nexus.py` / `main.py` | live harden + export |
+| `tests/test_dominion_pbi.py` / `tests/test_optimus.py` | cobertura |
+| planning, architecture, contracts, testing, ADR-0012/0025, rules | 1.7a.4 + 1.7b |
+
+### Proximos passos
+- Spec/implementacao 1.7b `--modo chat` (MAF + MCP)
+- Caps. formais LaTeX dual ingress (alem da nota)
+
+---
+
 ## Sessao 24 - 2026-07-21 - 1.7a.3 Forward/Oportunidades no caminho PBI
 
 ### Contexto

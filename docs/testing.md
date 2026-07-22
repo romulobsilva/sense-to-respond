@@ -883,7 +883,7 @@ Schema com campos faltantes gera diagnostico
 
 ## 13d. Testes Dual Ingress / PBI MCP (ADR-0025)
 
-### PoC (1.7a.2) + paridade executiva (1.7a.3)
+### PoC (1.7a.2) + paridade executiva (1.7a.3) + hardening live (1.7a.4)
 
 ```text
 carregar_catalogo_dax valida YAML exemplo          [x] test_dominion_pbi
@@ -892,29 +892,63 @@ adaptador DOI + sellout + forward + oportunidade   [x]
 resumo top_forward e top_oportunidades preenchidos [x]
 Nexus --fonte pbi nao exige dataset_canonico       [x]
 auditoria registra catalog_execucao sem dump       [x]
+REST normaliza chaves bracket -> estilo catalogo   [x]
+copia Optimus sem "SO acima" com desvio negativo   [x]
+export auditoria/resultados_pbi_*.json             [x]
+evento resultados_pbi_export + state path          [x]
 ```
 
 Comando CI local:
 
 ```text
-PYTEST_ADDOPTS= python -m pytest tests/test_dominion_pbi.py -q -c /dev/null --rootdir=.
+PYTEST_ADDOPTS= python -m pytest tests/test_dominion_pbi.py tests/test_optimus.py::TestCopiaForwardCoerenteComSinal -q -c /dev/null --rootdir=.
 ```
 
-Smoke manual (nao CI):
+Smoke manual path B live (nao CI):
 
 ```text
-PBI_ACCESS_TOKEN=... PBI_FIXTURE_PATH= \
-  python main.py --modo nexus --fonte pbi
+az login --allow-no-subscriptions
+export PBI_ACCESS_TOKEN="$(az account get-access-token --resource https://analysis.windows.net/powerbi/api --query accessToken -o tsv)"
+export PBI_FIXTURE_PATH=
+export HITL_MODE=auto
+python main.py --modo nexus --fonte pbi
 ```
 
-(HITL_MODE=auto recomendado para smoke nao interativo.)
+Esperado: `client_source=rest` no export, `sinais>0`, PDF com 3 paineis,
+arquivo `auditoria/resultados_pbi_ultima.json` gerado.
+
+### 13e. Testes Chat PBI (ADR-0026 / 1.7b)
+
+```text
+input guardrail bloqueia pergunta curta/injecao     [x] test_chat_pbi
+ChatResult shape (markdown + meta)                  [x]
+transport mock: tools injetadas sem OAuth           [x]
+CLI --modo chat --pergunta imprime Markdown         [x]
+batch --fonte pbi nao quebra com codigo chat        [x] test_dominion_pbi
+GenerateQuery ausente no caminho batch              [x] invariante ADR-0025
+```
+
+Comando CI local (apos implementacao):
+
+```text
+PYTEST_ADDOPTS= python -m pytest tests/test_chat_pbi.py -q -c /dev/null --rootdir=.
+```
+
+Smoke manual chat (nao CI):
+
+```text
+az login --allow-no-subscriptions
+export PBI_ACCESS_TOKEN="$(az account get-access-token --resource https://analysis.windows.net/powerbi/api --query accessToken -o tsv)"
+export CHAT_PBI_TRANSPORT=mcp
+python main.py --modo chat --pergunta "Tem estoque suficiente para atender a demanda no curto prazo?"
+```
 
 ### Backlog pos-PoC (nao exigir agora)
 
 ```text
-catalogo Mondelez S&OE contra modelo publicado
 CI live contra Fabric (auth/custo)
 parity CSV Mondelez vs PBI Mondelez (mesmos KPIs)
+UI React sobre ChatResult
 ```
 
 ---

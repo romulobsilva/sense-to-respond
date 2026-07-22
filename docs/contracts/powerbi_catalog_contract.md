@@ -98,10 +98,19 @@ pbi_catalog_id
 pbi_artifact_id
 resultados_pbi[query_id] = { columns, rows, meta }
 catalog_execucao = { query_id, ok, erro?, n_rows }
+resultados_pbi_export = { sessao, ultima }   # caminhos de arquivo (1.7a.4)
 ```
 
-Nao serializar `resultados_pbi` completo em auditoria se volume alto
-(ADR-0012): preferir meta + amostra.
+Nao embutir `resultados_pbi` completo em `ultima_sessao.json`
+(ADR-0012). Em 1.7a.4 o dump tabular vai para arquivos separados
+gitignored:
+
+* `auditoria/resultados_pbi_<sessao_id>.json`
+* `auditoria/resultados_pbi_ultima.json` (sempre a ultima run)
+
+O parser REST normaliza chaves Power BI (`[DOIStatus]`,
+`Fact_S2R[Country]`) para o estilo do catalogo/fixture
+(`DOIStatus`, `Fact_S2R Country`) antes do adaptador.
 
 ---
 
@@ -119,3 +128,16 @@ Ver `docs/contracts/examples/agua_io_catalog.example.yaml`.
 * [x] Fixture JSON para testes offline
 * [x] Mondelez YAML: `catalogs/mondelez_s2r_v1.yaml` + env `PBI_ARTIFACT_ID`
 * [x] Q4/Q5 mapeados a tipos Optimus de forward/oportunidade (1.7a.3)
+* [x] Path B live: normalizacao REST + export `resultados_pbi_*.json` (1.7a.4)
+* [x] Smoke autenticado com sinais > 0 e PDF com DOI/forward/opps
+
+---
+
+## 8. Relacao com Chat PBI (ADR-0026)
+
+Este contrato governa o **batch** (catalogo versionado).
+
+O chat analitico (`--modo chat`) pode gerar DAX ad hoc via
+`GenerateQuery` + `ExecuteQuery` MCP e **nao** precisa passar pelo
+YAML de catalogo. O catalogo continua sendo a fonte de verdade do
+relatorio S&OE; o chat nao o substitui.

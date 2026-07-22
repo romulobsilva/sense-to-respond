@@ -72,7 +72,30 @@ relatorio_pdf
 sessao_fim
 ```
 
+Ordem tipica com `--fonte pbi` (Dominion PBI):
+
+```text
+catalog_execucao
+dominion_pbi
+resultados_pbi_export
+handoff (varios)
+validacao_deterministica
+critic_auditoria
+fila_nexus
+resumo_executivo
+visualizacao_png
+llm_explicacao
+output_guardrail
+relatorio_pdf
+sessao_fim
+```
+
 `handoff` se repete; os demais tipos em geral aparecem uma vez (exceto retries).
+
+Arquivos irmaos (gitignored, nao embutidos neste JSON):
+
+* `auditoria/resultados_pbi_<sessao_id>.json`
+* `auditoria/resultados_pbi_ultima.json`
 
 ### 4.1 `datashield_perfil`
 
@@ -123,6 +146,37 @@ validador -> critic
 ```
 
 Para reconstruir o pipeline, leia a sequencia de `handoff` e ignore o tamanho do JSON.
+
+### 4.3b `catalog_execucao` / `dominion_pbi` / `resultados_pbi_export` (PBI)
+
+Eventos do caminho `--fonte pbi` (ADR-0025 / planning 1.7a.4).
+
+**`catalog_execucao`:** meta por query (`query_id`, `ok`, `n_rows`, erro opcional);
+nao inclui `rows` completas.
+
+**`dominion_pbi`:** `n_sinais`, `n_queries_ok`.
+
+**`resultados_pbi_export`:** caminhos do dump tabular
+
+| Chave em `dados` | Significado |
+|------------------|-------------|
+| `caminho_sessao` | `auditoria/resultados_pbi_<sessao_id>.json` |
+| `caminho_ultima` | `auditoria/resultados_pbi_ultima.json` |
+| `n_queries` | Quantidade de query_id no dump |
+
+O JSON exportado contem `resultados_pbi`, `resultados_pbi_priorizacao`
+(Q2/Q4/Q5), `client_source` (`rest` \| `fixture`) e `catalog_execucao`.
+
+### 4.3c Chat PBI (ADR-0026) -- arquivos separados
+
+O modo `--modo chat` **nao** escreve em `ultima_sessao.json` do batch.
+Trilha dedicada (gitignored):
+
+* `auditoria/chat_<sessao_id>.json`
+* `auditoria/chat_ultima.json`
+
+Eventos tipicos: `chat_input_guardrail`, `chat_inicio`, `chat_fim`,
+`chat_erro`. Sem Bearer token e sem dumps tabulares completos das tools.
 
 ### 4.4 `dominion_mondelez`
 

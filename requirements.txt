@@ -6,3 +6,5 @@ pytest>=8.0.0
 matplotlib>=3.8.0
 weasyprint>=62.0
 PyYAML>=6.0.0
+agent-framework>=1.12.0
+mcp>=1.0.0

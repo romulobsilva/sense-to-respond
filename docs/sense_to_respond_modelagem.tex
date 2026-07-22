@@ -445,7 +445,7 @@ cadeia de depend\^encias estrita que facilita a depura\c{c}\~ao e auditoria.
 
 \section{Dual Ingress (Planilha vs PBI)}
 
-A PoC (ADR-0025 / planning 1.7a.2--1.7a.3) admite dois ingressos at\'e o mesmo
+A PoC (ADR-0025 / planning 1.7a.2--1.7a.4) admite dois ingressos at\'e o mesmo
 motor $F_{\text{Sinais}}\circ\cdots\circ F_{\text{Output}}$:
 
 \begin{itemize}
@@ -454,6 +454,10 @@ motor $F_{\text{Sinais}}\circ\cdots\circ F_{\text{Output}}$:
   \item \textbf{PBI unificado}: cat\'alogo DAX + \texttt{ExecuteQuery}
     via \texttt{dominion\_pbi} (\texttt{--fonte pbi}). N\'umeros v\^em do
     semantic model; \texttt{GenerateQuery} fica fora do batch.
+    No path live (REST), chaves \texttt{[Col]} / \texttt{Table[Col]}
+    s\~ao normalizadas antes do adaptador; dump tabular opcional em
+    \texttt{auditoria/resultados\_pbi\_*.json} (fora de
+    \texttt{ultima\_sessao.json}, ADR-0012).
 \end{itemize}
 
 No ramo PBI, $\state$ recebe \texttt{fonte\_dados=pbi},
@@ -4332,6 +4336,11 @@ n\~ao entram como invariantes deste documento:
     omnichannel; connector Fabric cron dedicado; alinhamento fino de
     tipos de sinal Agua$\leftrightarrow$Mondelez; cap\'itulos formais
     LaTeX do ramo PBI (al\'em desta nota).
+  \item \textbf{Chat PBI anal\'itico (1.7b / ADR-0026, MVP CLI)}:
+    \texttt{--modo chat} paralelo ao batch S\&OE, com Microsoft Agent
+    Framework + tools MCP (schema / ExecuteQuery / GenerateQuery s\'o
+    neste modo). N\~ao substitui cat\'alogo YAML nem Optimus/PDF.
+    UI React fica como fase seguinte sobre o mesmo \texttt{ChatResult}.
 \end{enumerate}
 
 Quando implementados, a modelagem deve ser estendida nos cap\'itulos

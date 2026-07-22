@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from agent import AgenteOpenAI
+from chat_pbi import formatar_saida_cli, run as run_chat_pbi, run_repl
 from config import aplicar_overrides_thresholds, load_settings
 from dataclasses import replace
 from harness import Harness, TIPOS_RESUMO_AUDITORIA as TIPOS_HARNESS
@@ -136,9 +137,24 @@ def main() -> None:
     )
     parser.add_argument(
         "--modo",
-        choices=("nexus", "legado"),
+        choices=("nexus", "legado", "chat"),
         default="nexus",
-        help="nexus=MVP completo; legado=harness sem Optimus/Critic.",
+        help=(
+            "nexus=MVP completo; legado=harness sem Optimus/Critic; "
+            "chat=analitico PBI (ADR-0026, paralelo ao batch)."
+        ),
+    )
+    parser.add_argument(
+        "--pergunta",
+        default=None,
+        help="Pergunta NL para --modo chat (one-shot). Sem ela, abre REPL.",
+    )
+    parser.add_argument(
+        "--chat-transport",
+        default=None,
+        dest="chat_transport",
+        choices=("mcp", "rest", "mock"),
+        help="Transport do chat PBI (default: CHAT_PBI_TRANSPORT / mcp).",
     )
     parser.add_argument(
         "--input",
@@ -193,6 +209,30 @@ def main() -> None:
     )
     if thresholds is not settings.thresholds:
         settings = replace(settings, thresholds=thresholds)
+
+    if args.modo == "chat":
+        if args.fonte is not None or args.arquivo_entrada:
+            raise SystemExit(
+                "Erro: --modo chat nao usa --fonte/--input "
+                "(batch S&OE e separado)."
+            )
+        transport = args.chat_transport or settings.chat_pbi_transport
+        if args.pergunta:
+            resultado_chat = run_chat_pbi(
+                args.pergunta,
+                settings=settings,
+                transport=transport,
+            )
+            print(formatar_saida_cli(resultado_chat, args.pergunta))
+            if resultado_chat.bloqueado:
+                raise SystemExit(1)
+            return
+        run_repl(
+            settings=settings,
+            transport=transport,
+        )
+        return
+
     agente = AgenteOpenAI(settings)
 
     pergunta = (

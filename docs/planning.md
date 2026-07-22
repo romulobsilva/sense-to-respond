@@ -535,8 +535,8 @@ forward/opps em 1.7a.3.
 - [x] Nexus/CLI: `--fonte pbi` vs `--input` CSV (mutuamente exclusivo)
 - [x] Env: `PBI_ARTIFACT_ID`, `PBI_CATALOG_PATH`, `PBI_FIXTURE_PATH`, `PBI_ACCESS_TOKEN`
 - [x] Reusar PNG/PDF com metadado `fonte_dados=pbi`
-- [x] Testes com fixtures JSON (`tests/test_dominion_pbi.py`, 9 passed)
-- [ ] Smoke manual autenticado (`PBI_ACCESS_TOKEN`) -> PDF
+- [x] Testes com fixtures JSON (`tests/test_dominion_pbi.py`)
+- [x] Smoke manual autenticado (`PBI_ACCESS_TOKEN`, sem fixture) -> PDF
 - [x] Registrar em `agent.log.md` ao concluir codigo
 
 ### 1.7a.3 Paridade executiva Forward / Oportunidades (PBI)
@@ -550,14 +550,47 @@ Aproximacao documentada vs CSV `analisar_forward` (serie temporal +
 - [x] Q2: coluna `DOIIdealDays` (`Policy DOI Ideal`) no adaptador DOI
 - [x] Adaptador + fixture JSON + testes (forward ruptura/overstock + opps)
 - [x] Relatorio/PNG: unidade NR USD/ton; notas 1.7a.3 (sem “DOI-first vazio” como unico caso)
-- [ ] Smoke manual autenticado full pipeline -> PDF com top_forward e top_oportunidades
+- [x] Smoke manual autenticado full pipeline -> PDF com top_forward e top_oportunidades
 - [x] Docs: ADR-0025 amend backlog, contrato, architecture, agent.log
+
+### 1.7a.4 Hardening path B live (REST) + export validacao
+
+- [x] Normalizar chaves REST (`[Col]` / `Table[Col]`) no parser
+  (`powerbi_mcp.py`) para o adaptador nao zerar sinais
+- [x] Copia Optimus forward/oportunidade coerente com sinal do desvio
+  (sem hardcode "SO acima" com % negativo)
+- [x] Export `auditoria/resultados_pbi_<sessao>.json` +
+  `resultados_pbi_ultima.json` (gitignored; ADR-0012: dump fora de
+  `ultima_sessao.json`)
+- [x] Evento auditoria `resultados_pbi_export` + state
+  `resultados_pbi_export`
+- [x] Rotulo NR USD na fila/logs quando `fonte_dados=pbi`
+- [x] Testes REST normalize + copia Optimus + export
+- [x] Smoke live: Critic aprovado (~0.95), 3 paineis preenchidos
+
+### 1.7b Chat PBI analitico (ADR-0026)
+
+Modo paralelo ao batch S&OE (nao substitui catalogo/Optimus/PDF).
+Ref: ADR-0026, `docs/architecture.md` §3.3.
+
+- [x] Spec/ADR-0026: `--modo chat` vs `--modo nexus` (batch intacto)
+- [x] Microsoft Agent Framework (MAF) + tools MCP Power BI
+  (schema / ExecuteQuery / GenerateQuery no chat; transport mcp)
+- [x] Nucleo `chat_pbi.run` -> `ChatResult` (UI-agnostic)
+- [x] CLI `--modo chat` / `--pergunta` + REPL; Markdown estruturado
+- [x] Auth Bearer (`PBI_ACCESS_TOKEN`) + transport `mcp|rest|mock`
+- [x] Auditoria de sessao de chat (`auditoria/chat_*.json`)
+- [x] Testes mock CI (`tests/test_chat_pbi.py`)
+- [ ] Smoke live MCP com perguntas DOI/estoque (manual)
+- [x] Docs architecture/rules/contracts/testing: fronteira chat vs batch
 
 ### Backlog pos-PoC PBI (apos 1.7a.2)
 
 - [x] Catalogo DAX Mondelez S&OE (DOI/SO/SI): `catalogs/mondelez_s2r_v1.yaml` (Q1-Q5)
 - [x] Swap documentado: `catalogs/mondelez_s2r_v1.yaml` + `PBI_ARTIFACT_ID`
 - [x] Paridade parcial forward/opps via Q4/Q5 (1.7a.3; nao e 1:1 com CSV)
+- [x] Path B live REST hardening + export validacao (1.7a.4)
+- [x] Chat PBI via MAF/MCP (1.7b MVP CLI; smoke live pendente)
 - [ ] Alinhar tipos de sinal PoC Agua com whitelist Mondelez
 - [ ] Paridade total CSV: janela temporal + `forward_marker` no modelo PBI
 - [ ] Popa / persistencia dataset / governanca (desenho produto)

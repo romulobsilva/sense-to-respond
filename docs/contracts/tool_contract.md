@@ -493,27 +493,59 @@ carregar_catalogo_dax(path) -> dict
   deterministic_tool / io_tool
   Valida YAML contra contrato; nao chama rede.
 
-executar_catalogo_pbi(catalog, artifact_id, mcp_client) -> dict
-  io_tool (MCP ExecuteQuery)
+executar_catalogo_pbi(catalog, artifact_id, client) -> dict
+  io_tool (ExecuteQuery: fixture CI ou REST live)
   So DAX do catalogo; sem GenerateQuery no batch.
   Saida: resultados_pbi + catalog_execucao
+  REST: normaliza chaves [Col] / Table[Col] (1.7a.4)
 
 adaptar_resultados_pbi_para_sinais(resultados_pbi, ...) -> list[Sinal]
   deterministic_tool
-  PoC: tipos minimos; Mondelez PBI = backlog (novo mapeamento)
+  Mondelez: doi_fora_politica, desvio_sellout,
+  premissa_forward_furada, forward_oportunidade
+
+exportar_resultados_pbi_para_auditoria(...) -> {sessao, ultima}
+  io_tool / audit helper
+  Grava auditoria/resultados_pbi_*.json (gitignored; ADR-0012)
 ```
 
-PoC 1.7a.2 + 1.7a.3: `powerbi_catalog.py`, `powerbi_mcp.py`,
+PoC 1.7a.2--1.7a.4: `powerbi_catalog.py`, `powerbi_mcp.py`,
 `dominion_pbi.py` + catalogo `catalogs/mondelez_s2r_v1.yaml` (Q1-Q5).
-Adaptador emite `doi_fora_politica`, `desvio_sellout`,
-`premissa_forward_furada`, `forward_oportunidade` (Optimus inalterado).
 
-Backlog pos-PoC:
+### Tools Chat PBI (ADR-0026 / planning 1.7b)
+
+Somente `--modo chat`. Proibido no batch Optimus/PDF.
+
+```text
+chat_pbi.run(pergunta, ...) -> ChatResult
+  orchestration_tool (MAF)
+  Entrada: pergunta NL (+ sessao opcional)
+  Saida: answer_markdown, tables[], citations[], meta
+  Numeros so via tools abaixo; CLI so imprime.
+
+GetSemanticModelSchema(artifactId) -> schema/meta
+  io_tool (MCP primario)
+
+GenerateQuery(artifactId, userInput, schemaSelection?, ...) -> DAX
+  io_tool (MCP; chat only)
+
+ExecuteQuery(artifactId, daxQueries[], maxRows?) -> rows
+  io_tool (MCP primario; fallback REST RestPowerBIClient)
+```
+
+Transport (`CHAT_PBI_TRANSPORT`):
+
+* `mcp` (preferido): MCP Streamable HTTP Fabric
+* `rest` (fallback): ExecuteQuery via REST; GenerateQuery indisponivel
+* `mock` (CI): fixtures/tools injetadas; sem OAuth
+
+Backlog pos-PoC restante:
 
 ```text
 connector HTTP Fabric standalone (cron)
 alinhar tipos sinal Agua <-> Mondelez
 paridade temporal total (forward_marker) no modelo PBI
+UI React sobre ChatResult
 ```
 
 Se entrada for invalida, a tool deve:

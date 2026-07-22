@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 HITL_MODES_VALIDOS = frozenset({"terminal", "auto", "arquivo", "streamlit"})
 FORWARD_MARKERS_VALIDOS = frozenset({"nan", "zero"})
+CHAT_PBI_TRANSPORTS_VALIDOS = frozenset({"mcp", "rest", "mock"})
 
 # Defaults de peso de ordenacao (heuristica; so afetam sort, nao R$ bruto)
 PESO_QUESTIONAR_PREMISSA_DEFAULT = 1.5
@@ -85,6 +86,9 @@ class Settings:
     pbi_catalog_path: Optional[str] = None
     pbi_access_token: Optional[str] = None
     pbi_fixture_path: Optional[str] = None
+    chat_pbi_transport: str = "mcp"
+    pbi_mcp_url: Optional[str] = None
+    chat_openai_model: Optional[str] = None
 
 
 def _read_float(name: str, default: str) -> float:
@@ -246,6 +250,22 @@ def load_settings() -> Settings:
     pbi_catalog_raw = os.getenv("PBI_CATALOG_PATH", "").strip()
     pbi_token_raw = os.getenv("PBI_ACCESS_TOKEN", "").strip()
     pbi_fixture_raw = os.getenv("PBI_FIXTURE_PATH", "").strip()
+    chat_transport = os.getenv("CHAT_PBI_TRANSPORT", "mcp").strip().lower()
+    if chat_transport not in CHAT_PBI_TRANSPORTS_VALIDOS:
+        raise ValueError(
+            f"CHAT_PBI_TRANSPORT '{chat_transport}' invalido. "
+            f"Validos: {', '.join(sorted(CHAT_PBI_TRANSPORTS_VALIDOS))}"
+        )
+    pbi_mcp_url_raw = os.getenv("PBI_MCP_URL", "").strip()
+    # Chat PBI (ADR-0026): default gpt-5.4 para paridade com chat IDE rico.
+    # Batch / Critic continuam em OPENAI_MODEL. Override: CHAT_OPENAI_MODEL.
+    chat_model_env = os.getenv("CHAT_OPENAI_MODEL")
+    if chat_model_env is None:
+        chat_model_raw = "gpt-5.4"
+    else:
+        chat_model_raw = chat_model_env.strip()
+        if not chat_model_raw:
+            chat_model_raw = model
 
     return Settings(
         openai_api_key=api_key,
@@ -260,6 +280,9 @@ def load_settings() -> Settings:
         pbi_catalog_path=pbi_catalog_raw or None,
         pbi_access_token=pbi_token_raw or None,
         pbi_fixture_path=pbi_fixture_raw or None,
+        chat_pbi_transport=chat_transport,
+        pbi_mcp_url=pbi_mcp_url_raw or None,
+        chat_openai_model=chat_model_raw,
     )
 
 

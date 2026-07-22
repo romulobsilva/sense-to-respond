@@ -217,23 +217,34 @@ Rotulos:
 * PBI unificado = caminho [B].
 * Planilha / schema cru = caminho [A] (+ Popa so no backlog pos-PoC).
 
-Regras do caminho PBI (batch):
+Regras do caminho PBI (batch / path B):
 
 * So `ExecuteQuery` com DAX do catalogo versionado.
 * Proibido depender de `GenerateQuery` no relatorio.
-* Troca Mondelez futura = novo YAML + `PBI_ARTIFACT_ID` (backlog).
+* Live: `PBI_ACCESS_TOKEN` + `PBI_FIXTURE_PATH` vazio; fixture tem
+  prioridade se setada (CI).
+* Connector REST normaliza nomes de coluna bracket antes do adaptador.
+* Dump tabular para validacao: `auditoria/resultados_pbi_*.json`
+  (gitignored); nao embutir rows em `ultima_sessao.json`.
+* Troca de modelo = novo YAML + `PBI_ARTIFACT_ID`.
 * Nao hardcodar tabelas do modelo de teste (Agua) no Nexus.
 * Nao reimplementar medidas DAX em Python como fallback padrao.
+
+Chat PBI analitico (`--modo chat`, ADR-0026 / planning 1.7b) e
+**paralelo** ao batch: Microsoft Agent Framework + MCP; GenerateQuery
+so nesse modo. Nucleo `chat_pbi.run` -> `ChatResult` (UI-agnostic);
+CLI imprime Markdown estruturado. Nao misturar chat com Optimus/PDF.
 
 Nao implementar no MVP sem atualizacao previa da spec:
 
 * MOE router dinamico;
 * consenso multi-agente;
 * agentes paralelos autonomos;
-* conversa livre entre agentes em linguagem natural;
+* conversa livre entre agentes em linguagem natural no batch
+  (chat analitico `--modo chat` e modo separado, ADR-0026);
 * execucao automatica em ERP/WMS/TMS;
 * Bridge operacional;
-* itens do **Backlog pos-PoC PBI** em `planning.md` (antes da PoC 1.7a.2).
+* itens do **Backlog pos-PoC PBI** ainda abertos em `planning.md`.
 
 ### 7.3 State blackboard
 
@@ -637,6 +648,11 @@ Se alterou guardrail:
 Se alterou Dual Ingress / PBI MCP (ADR-0025):
 * atualizar `docs/contracts/powerbi_catalog_contract.md` se o YAML mudar;
 * nao marcar backlog pos-PoC como feito na PoC 1.7a.2;
+
+Se alterou Chat PBI (ADR-0026):
+* manter batch sem GenerateQuery;
+* testes em `tests/test_chat_pbi.py` com transport mock;
+* nao acoplar `chat_pbi` a Streamlit/React;
 * nao commitar tokens/auth de `.cursor/mcp.json`;
 * fixtures JSON para CI sem OAuth.
 

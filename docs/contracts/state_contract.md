@@ -93,21 +93,45 @@ Estas regras nao podem ser quebradas sem mudanca previa de arquitetura.
 | `pbi_artifact_id` | `str` ou `None` | Nexus/config | Dominion PBI | GUID semantic model |
 | `pbi_catalog_id` | `str` ou `None` | Dominion PBI | Auditoria | Id do YAML |
 | `resultados_pbi` | `dict` ou `None` | Dominion PBI | Sinais | `query_id` -> {columns, rows, meta} |
-| `catalog_execucao` | `list[dict]` ou `None` | Dominion PBI | Auditoria | Status por query (sem dump completo) |
+| `catalog_execucao` | `list[dict]` ou `None` | Dominion PBI | Auditoria | Status por query (sem dump no evento) |
+| `resultados_pbi_export` | `dict` ou `None` | Nexus PBI | Auditoria/humano | `{sessao, ultima}` caminhos do dump (1.7a.4) |
 
 Regras PoC:
 
 * Se `fonte_dados == "pbi"`: `dataset_canonico` pode ser `None`; DataShield
   nao e obrigatorio.
 * Se `fonte_dados == "csv"`: fluxo DataShield atual; campos PBI ficam `None`.
-* Nao serializar `resultados_pbi` completo em auditoria se volume alto
-  (ADR-0012); preferir `catalog_execucao` + amostra.
+* Nao embutir `resultados_pbi` completo em `ultima_sessao.json`
+  (ADR-0012); usar evento `catalog_execucao` (meta) + arquivos
+  `auditoria/resultados_pbi_*.json` (gitignored) para validacao externa.
 
 Backlog pos-PoC (nao exigir no state ate la):
 
 * Persistencia Popa / dataset versionado
 * Campos de entrega omnichannel / feedback
 * Catalogo Mondelez (mesmo shape; outro YAML)
+
+## 4d. Chat PBI (ADR-0026) -- fora do blackboard batch
+
+O modo `--modo chat` **nao** escreve no state Nexus (`sinais`,
+`proposicoes`, `fila_nexus`). Retorno tipado:
+
+```text
+ChatResult:
+  answer_markdown: str
+  tables: list[dict]
+  citations: list[dict]
+  meta: {sessao_id, transport, artifact_id, tools_usadas, ...}
+  bloqueado: bool
+  motivo: str
+```
+
+Auditoria de chat (eventos `chat_*` em JSON proprio ou trilha dedicada):
+
+* Registrar: sessao_id, pergunta (truncada), tools chamadas (nome),
+  transport, erros.
+* Nao registrar: token Bearer, dumps tabulares completos de MCP,
+  system prompt completo.
 
 ---
 
