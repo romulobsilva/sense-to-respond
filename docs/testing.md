@@ -928,7 +928,7 @@ CLI --modo chat --pergunta imprime Markdown         [x]
 batch --fonte pbi nao quebra com codigo chat        [x] test_dominion_pbi
 GenerateQuery ausente no caminho batch              [x] invariante ADR-0025
 smoke live estoque curto prazo (gpt-5.4)            [x] manual 2026-07-22
-REPL multi-turno com historico                      [ ] backlog
+REPL multi-turno com historico (ChatSession)        [x] test_chat_pbi
 ```
 
 Comando CI local:
@@ -958,7 +958,7 @@ do modelo (nao inventados).
 CI live contra Fabric (auth/custo)
 parity CSV Mondelez vs PBI Mondelez (mesmos KPIs)
 UI React sobre ChatResult
-REPL AgentSession (historico multi-turno)
+persistir/retomar conversa em disco
 ```
 
 ---

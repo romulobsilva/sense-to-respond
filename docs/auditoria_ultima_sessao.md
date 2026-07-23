@@ -176,9 +176,11 @@ Trilha dedicada (gitignored):
 * `auditoria/chat_ultima.json`
 
 Eventos tipicos: `chat_input_guardrail`, `chat_inicio`, `chat_fim`,
-`chat_erro`. Meta do `ChatResult` pode incluir `openai_model`
-(ex.: `gpt-5.4`) e `transport`. Sem Bearer token e sem dumps tabulares
-completos das tools. REPL atual: um arquivo por turno (sem historico).
+`chat_erro` (com `turno` / `iteracao`). Meta do `ChatResult` pode
+incluir `openai_model` (ex.: `gpt-5.4`), `transport`, `turno`,
+`multi_turno`. Sem Bearer token e sem dumps tabulares completos.
+REPL multi-turno (ADR-0026 D7): um `chat_<sessao>.json` acumulando
+varios turns ate `sair`; historico de mensagens so em RAM.
 
 ### 4.4 `dominion_mondelez`
 

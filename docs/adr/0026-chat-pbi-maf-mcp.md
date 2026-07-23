@@ -121,6 +121,26 @@ Sessao de chat grava eventos em `auditoria/` (tipos `chat_*`), sem
 embutir dumps tabulares grandes em `ultima_sessao.json` do batch e sem
 tokens. Dump opcional separado se necessario (mesmo padrao ADR-0012).
 
+### D7 - REPL multi-turno (contexto em RAM)
+
+Para conversar como no Cursor/ChatGPT no terminal:
+
+```text
+python main.py --modo chat          # REPL com memoria
+python main.py --modo chat --pergunta "..."   # one-shot (sem memoria)
+```
+
+* `ChatSession` em RAM: mesmo `sessao_id` + historico de mensagens
+  (user/assistant) + `AgentSession` MAF enquanto o processo viver.
+* Follow-ups ("abre a proxima camada", "so Brazil") usam o historico
+  e podem chamar novas tools.
+* Ao digitar `sair` / `exit` / `quit`, a sessao zera (sem persistir
+  conversa para retomar depois -- fora deste MVP).
+* One-shot (`--pergunta`) permanece isolado (sem historico).
+* Nao escreve no blackboard Nexus; nao muda o batch ADR-0025.
+
+Auditoria: um `chat_<sessao_id>.json` com varios turns (`turno=1..N`).
+
 ---
 
 ## Alternativas consideradas
@@ -205,9 +225,10 @@ React depois.
 
 ### Backlog pos-MVP (esta ADR)
 
-* [ ] REPL com historico multi-turno (`AgentSession` em RAM)
+* [x] REPL com historico multi-turno (`AgentSession` / mensagens em RAM)
 * [ ] UI React/API sobre `ChatResult`
 * [ ] DefaultAzureCredential / Entra sem Bearer manual
+* [ ] Persistir/retomar conversa em disco (fora do MVP RAM)
 
 ---
 

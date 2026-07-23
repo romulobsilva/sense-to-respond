@@ -102,6 +102,14 @@ de concluir. Nunca diga "estoque suficiente" ignorando understock.
 Para perguntas pontuais (um SKU, um pais, uma data unica) o detalhe
 pode ser so essa fatia; ainda assim mostre numero + status + ideal.
 
+CONVERSA MULTI-TURNO (quando houver historico de mensagens)
+- Trate follow-ups como no ChatGPT/Cursor: "abre a proxima camada",
+  "so Brazil", "e o DOI do dia 7?" usam o contexto anterior.
+- Reaproveite numeros/tabelas do historico quando ainda validos;
+  se precisar de novo corte, chame ExecuteQuery de novo.
+- Nao peca ao usuario para repetir a pergunta completa.
+- Mantenha o mesmo nivel de detalhe/completude nos follow-ups.
+
 REGRAS DURAS
 - Numeros so das tools. Nunca invente DOI, contagens ou status.
 - Nao fique em loop em GenerateQuery (max 1 tentativa).
@@ -110,6 +118,28 @@ REGRAS DURAS
 - Use sempre o artifactId default informado nas instrucoes, salvo o
   usuario pedir outro.
 """
+
+
+@dataclass
+class ChatSession:
+    """
+    Sessao de conversa em RAM (REPL multi-turno, ADR-0026 D7).
+    """
+
+    sessao_id: str
+    audit: AuditTrail
+    turno: int = 0
+    messages: List[Dict[str, str]] = field(default_factory=list)
+    maf_session: Any = None
+
+
+def criar_chat_session() -> ChatSession:
+    """Cria ChatSession com sessao_id e trilha de auditoria compartilhados."""
+    sessao_id = gerar_sessao_id()
+    return ChatSession(
+        sessao_id=sessao_id,
+        audit=AuditTrail(sessao_id=sessao_id),
+    )
 
 
 def _extrair_medidas_do_dax(dax: str) -> List[str]:
@@ -228,7 +258,8 @@ class ChatResult:
     motivo: str = ""
 
 
-AgentRunner = Callable[[str], str]
+# (pergunta) ou (pergunta, historico_messages)
+AgentRunner = Callable[..., str]
 
 
 def resolver_transport(valor: Optional[str] = None) -> str:
@@ -261,11 +292,16 @@ def formatar_saida_cli(resultado: ChatResult, pergunta: str) -> str:
     transport = meta.get("transport", "")
     sessao = meta.get("sessao_id", "")
     modelo = meta.get("openai_model", "")
+    turno = meta.get("turno", "")
+    multi = meta.get("multi_turno", False)
     if transport or sessao or modelo:
+        extra = f" turno={turno}" if turno != "" else ""
+        if multi:
+            extra = f"{extra} multi_turno=sim"
         linhas.extend(
             [
                 "",
-                f"(sessao={sessao} transport={transport} model={modelo})",
+                f"(sessao={sessao} transport={transport} model={modelo}{extra})",
             ]
         )
     linhas.append("=== FIM CHAT ===")
@@ -407,6 +443,78 @@ def _criar_cliente_rest_ou_none(settings: Settings) -> Optional[PowerBIQueryClie
     return RestPowerBIClient(token)
 
 
+def _mensagens_maf(
+    history: Sequence[Dict[str, str]],
+    pergunta: str,
+) -> List[Any]:
+    """
+    Monta lista Message MAF (historico + pergunta atual).
+    """
+    from agent_framework import Message
+
+    msgs: List[Any] = []
+    for item in history:
+        role = str(item.get("role", "user"))
+        content = str(item.get("content", ""))
+        if not content:
+            continue
+        if role not in ("user", "assistant", "system"):
+            role = "user"
+        msgs.append(Message(role=role, contents=content))
+    msgs.append(Message(role="user", contents=pergunta))
+    return msgs
+
+
+def _ensure_maf_session(chat_session: Optional[ChatSession]) -> Any:
+    """Garante AgentSession MAF associado a ChatSession."""
+    if chat_session is None:
+        return None
+    if chat_session.maf_session is not None:
+        return chat_session.maf_session
+    from agent_framework import AgentSession
+
+    chat_session.maf_session = AgentSession(session_id=chat_session.sessao_id)
+    return chat_session.maf_session
+
+
+async def _agent_run_turno(
+    agent: Any,
+    *,
+    pergunta: str,
+    history: Sequence[Dict[str, str]],
+    maf_session: Any,
+    function_invocation_kwargs: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Executa um turno com historico + AgentSession."""
+    kwargs: Dict[str, Any] = {}
+    if maf_session is not None:
+        kwargs["session"] = maf_session
+    if function_invocation_kwargs is not None:
+        kwargs["function_invocation_kwargs"] = function_invocation_kwargs
+    if history:
+        response = await agent.run(
+            _mensagens_maf(history, pergunta),
+            **kwargs,
+        )
+    else:
+        response = await agent.run(pergunta, **kwargs)
+    return (response.text or "").strip()
+
+
+def _build_openai_client(settings: Settings) -> Any:
+    """OpenAIChatClient para o chat (CHAT_OPENAI_MODEL ou OPENAI_MODEL)."""
+    from agent_framework.openai import OpenAIChatClient
+
+    model_chat = (
+        (settings.chat_openai_model or "").strip()
+        or settings.openai_model
+    )
+    return OpenAIChatClient(
+        model=model_chat,
+        api_key=settings.openai_api_key,
+    ), model_chat
+
+
 async def _run_maf_async(
     pergunta: str,
     *,
@@ -415,22 +523,14 @@ async def _run_maf_async(
     artifact_id: str,
     citations: List[Dict[str, Any]],
     tools_override: Optional[Sequence[Any]] = None,
+    chat_session: Optional[ChatSession] = None,
 ) -> str:
     """
-    Executa agente MAF com MCP remoto ou tools locais.
+    Executa agente MAF com MCP remoto ou tools locais (um turno).
     """
     from agent_framework import Agent, MCPStreamableHTTPTool
-    from agent_framework.openai import OpenAIChatClient
 
-    # Chat pode usar modelo mais forte via CHAT_OPENAI_MODEL (batch intacto).
-    model_chat = (
-        (settings.chat_openai_model or "").strip()
-        or settings.openai_model
-    )
-    client = OpenAIChatClient(
-        model=model_chat,
-        api_key=settings.openai_api_key,
-    )
+    client, model_chat = _build_openai_client(settings)
     instructions = montar_instrucoes_agente(
         artifact_id=artifact_id,
         transport=transport,
@@ -439,6 +539,13 @@ async def _run_maf_async(
     instructions = (
         f"{instructions}\n- Modelo LLM desta sessao: {model_chat}\n"
     )
+    if chat_session is not None and chat_session.messages:
+        instructions = (
+            f"{instructions}"
+            "- Ha historico multi-turno: responda como conversa continua.\n"
+        )
+    history = list(chat_session.messages) if chat_session else []
+    maf_session = _ensure_maf_session(chat_session)
 
     if tools_override is not None:
         async with Agent(
@@ -447,8 +554,12 @@ async def _run_maf_async(
             instructions=instructions,
             tools=list(tools_override),
         ) as agent:
-            response = await agent.run(pergunta)
-            return (response.text or "").strip()
+            return await _agent_run_turno(
+                agent,
+                pergunta=pergunta,
+                history=history,
+                maf_session=maf_session,
+            )
 
     if transport == "mcp":
         token = (settings.pbi_access_token or "").strip()
@@ -461,10 +572,6 @@ async def _run_maf_async(
             or os.getenv("PBI_MCP_URL", DEFAULT_PBI_MCP_URL).strip()
             or DEFAULT_PBI_MCP_URL
         )
-        # Auth no http_client: o handshake MCP (initialize) ocorre no
-        # __aenter__ do Agent, ANTES de function_invocation_kwargs.
-        # header_provider so cobre call_tool; sem header na conexao a
-        # sessao e cancelada ("MCP server failed to initialize").
         import httpx
 
         http_client = httpx.AsyncClient(
@@ -493,8 +600,11 @@ async def _run_maf_async(
                 instructions=instructions,
                 tools=mcp_tool,
             ) as agent:
-                response = await agent.run(
-                    pergunta,
+                answer = await _agent_run_turno(
+                    agent,
+                    pergunta=pergunta,
+                    history=history,
+                    maf_session=maf_session,
                     function_invocation_kwargs={"pbi_access_token": token},
                 )
                 citations.append(
@@ -504,11 +614,10 @@ async def _run_maf_async(
                         "url": mcp_url,
                     }
                 )
-                return (response.text or "").strip()
+                return answer
         finally:
             await http_client.aclose()
 
-    # rest / mock com tools locais
     pbi_client = _criar_cliente_rest_ou_none(settings)
     if transport == "rest" and pbi_client is None:
         raise PowerBIQueryError(
@@ -526,8 +635,12 @@ async def _run_maf_async(
         instructions=instructions,
         tools=local_tools,
     ) as agent:
-        response = await agent.run(pergunta)
-        return (response.text or "").strip()
+        return await _agent_run_turno(
+            agent,
+            pergunta=pergunta,
+            history=history,
+            maf_session=maf_session,
+        )
 
 
 def _run_mock_deterministic(
@@ -625,6 +738,19 @@ def _salvar_auditoria_chat(trail: AuditTrail) -> Path:
     return caminho
 
 
+def _chamar_agent_runner(
+    agent_runner: AgentRunner,
+    pergunta: str,
+    chat_session: Optional[ChatSession],
+) -> str:
+    """Chama runner de teste com ou sem historico."""
+    historico = list(chat_session.messages) if chat_session else None
+    try:
+        return agent_runner(pergunta, historico)
+    except TypeError:
+        return agent_runner(pergunta)
+
+
 def run(
     pergunta: str,
     *,
@@ -635,22 +761,26 @@ def run(
     tools_override: Optional[Sequence[Any]] = None,
     mock_payload: Optional[Dict[str, Any]] = None,
     persistir_auditoria: bool = True,
+    chat_session: Optional[ChatSession] = None,
 ) -> ChatResult:
     """
     Executa um turno de chat PBI e devolve ChatResult.
 
-    Args:
-        pergunta: pergunta do usuario em linguagem natural.
-        settings: configuracao (obrigatoria fora de transport=mock puro).
-        transport: mcp | rest | mock.
-        artifact_id: GUID do semantic model.
-        agent_runner: injecao para testes (bypass MAF).
-        tools_override: tools MAF injetadas (testes).
-        mock_payload: payload deterministico do transport mock.
-        persistir_auditoria: grava JSON em auditoria/.
+    Com ``chat_session``, reutiliza sessao_id/historico (REPL multi-turno).
+    Sem ``chat_session``, comportamento one-shot isolado.
     """
-    sessao_id = gerar_sessao_id()
-    trail = AuditTrail(sessao_id=sessao_id)
+    if chat_session is not None:
+        sessao_id = chat_session.sessao_id
+        trail = chat_session.audit
+        chat_session.turno += 1
+        turno = chat_session.turno
+        multi_turno = True
+    else:
+        sessao_id = gerar_sessao_id()
+        trail = AuditTrail(sessao_id=sessao_id)
+        turno = 1
+        multi_turno = False
+
     transport_default = None
     if transport is None and settings is not None:
         transport_default = settings.chat_pbi_transport
@@ -664,7 +794,8 @@ def run(
     guard = verificar_input(pergunta)
     trail.registrar(
         "chat_input_guardrail",
-        {"ok": guard.ok, "detalhe": guard.detalhe},
+        {"ok": guard.ok, "detalhe": guard.detalhe, "turno": turno},
+        iteracao=turno,
     )
     if not guard.ok:
         resultado = ChatResult(
@@ -673,6 +804,8 @@ def run(
                 "sessao_id": sessao_id,
                 "transport": transport_resolvido,
                 "artifact_id": aid,
+                "turno": turno,
+                "multi_turno": multi_turno,
             },
             bloqueado=True,
             motivo=guard.detalhe,
@@ -687,11 +820,17 @@ def run(
             meta={
                 "sessao_id": sessao_id,
                 "transport": transport_resolvido,
+                "turno": turno,
+                "multi_turno": multi_turno,
             },
             bloqueado=True,
             motivo="PBI_ARTIFACT_ID nao configurado.",
         )
-        trail.registrar("chat_erro", {"motivo": resultado.motivo})
+        trail.registrar(
+            "chat_erro",
+            {"motivo": resultado.motivo, "turno": turno},
+            iteracao=turno,
+        )
         if persistir_auditoria:
             _salvar_auditoria_chat(trail)
         return resultado
@@ -703,12 +842,21 @@ def run(
             "pergunta": _truncar(pergunta, 300),
             "transport": transport_resolvido,
             "artifact_id": aid,
+            "turno": turno,
+            "n_mensagens_historico": (
+                len(chat_session.messages) if chat_session else 0
+            ),
         },
+        iteracao=turno,
     )
 
     try:
         if agent_runner is not None:
-            answer = agent_runner(pergunta)
+            answer = _chamar_agent_runner(
+                agent_runner,
+                pergunta,
+                chat_session,
+            )
         elif transport_resolvido == "mock" and tools_override is None:
             answer = _run_mock_deterministic(
                 pergunta,
@@ -716,6 +864,11 @@ def run(
                 citations=citations,
                 mock_payload=mock_payload,
             )
+            if chat_session is not None and chat_session.messages:
+                answer = (
+                    f"(follow-up com {len(chat_session.messages)} "
+                    f"msgs no historico)\n\n{answer}"
+                )
         else:
             if settings is None:
                 raise ValueError(
@@ -729,12 +882,18 @@ def run(
                     artifact_id=aid,
                     citations=citations,
                     tools_override=tools_override,
+                    chat_session=chat_session,
                 )
             )
     except Exception as exc:  # noqa: BLE001 - fronteira CLI
         trail.registrar(
             "chat_erro",
-            {"tipo": type(exc).__name__, "mensagem": _truncar(str(exc), 400)},
+            {
+                "tipo": type(exc).__name__,
+                "mensagem": _truncar(str(exc), 400),
+                "turno": turno,
+            },
+            iteracao=turno,
         )
         if persistir_auditoria:
             _salvar_auditoria_chat(trail)
@@ -745,9 +904,17 @@ def run(
                 "sessao_id": sessao_id,
                 "transport": transport_resolvido,
                 "artifact_id": aid,
+                "turno": turno,
+                "multi_turno": multi_turno,
             },
             bloqueado=True,
             motivo=f"Falha no chat PBI: {exc}",
+        )
+
+    if chat_session is not None:
+        chat_session.messages.append({"role": "user", "content": pergunta})
+        chat_session.messages.append(
+            {"role": "assistant", "content": answer}
         )
 
     trail.registrar(
@@ -755,8 +922,10 @@ def run(
         {
             "n_citations": len(citations),
             "resposta_chars": len(answer),
+            "turno": turno,
             "tools": [c.get("tool") for c in citations if isinstance(c, dict)],
         },
+        iteracao=turno,
     )
     audit_path: Optional[str] = None
     if persistir_auditoria:
@@ -778,6 +947,8 @@ def run(
             "artifact_id": aid,
             "auditoria_path": audit_path,
             "openai_model": model_usado,
+            "turno": turno,
+            "multi_turno": multi_turno,
             "tools_usadas": [
                 c.get("tool") for c in citations if isinstance(c, dict)
             ],
@@ -785,16 +956,225 @@ def run(
     )
 
 
-def run_repl(
+async def _repl_loop_async(
     *,
     settings: Settings,
-    transport: Optional[str] = None,
-    artifact_id: Optional[str] = None,
+    transport: str,
+    artifact_id: str,
+    chat_session: ChatSession,
 ) -> None:
     """
-    Loop interativo no terminal ate 'sair' / 'exit' / 'quit'.
+    REPL conversacional: um Agent MAF vivo + historico ate sair.
     """
-    print("Chat PBI (ADR-0026). Digite 'sair' para encerrar.")
+    from agent_framework import Agent, MCPStreamableHTTPTool
+
+    citations_sink: List[Dict[str, Any]] = []
+    client, model_chat = _build_openai_client(settings)
+    instructions = montar_instrucoes_agente(
+        artifact_id=artifact_id,
+        transport=transport,
+        catalog_path=settings.pbi_catalog_path,
+    )
+    instructions = (
+        f"{instructions}\n- Modelo LLM desta sessao: {model_chat}\n"
+        "- Modo conversa multi-turno ativo (historico em RAM).\n"
+    )
+    maf_session = _ensure_maf_session(chat_session)
+
+    http_client: Any = None
+    tools: Any
+    token = ""
+    if transport == "mcp":
+        token = (settings.pbi_access_token or "").strip()
+        if not token:
+            raise PowerBIQueryError(
+                "CHAT_PBI_TRANSPORT=mcp exige PBI_ACCESS_TOKEN."
+            )
+        import httpx
+
+        mcp_url = (
+            (settings.pbi_mcp_url or "").strip()
+            or os.getenv("PBI_MCP_URL", DEFAULT_PBI_MCP_URL).strip()
+            or DEFAULT_PBI_MCP_URL
+        )
+        http_client = httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=httpx.Timeout(60.0, connect=30.0),
+        )
+        tools = MCPStreamableHTTPTool(
+            name="powerbi",
+            description="Power BI Fabric MCP tools",
+            url=mcp_url,
+            allowed_tools={
+                "GetSemanticModelSchema",
+                "GenerateQuery",
+                "ExecuteQuery",
+                "GetReportMetadata",
+            },
+            http_client=http_client,
+            header_provider=lambda kwargs: {
+                "Authorization": f"Bearer {kwargs.get('pbi_access_token', token)}"
+            },
+        )
+    elif transport == "mock":
+        tools = _build_local_tools(
+            client=None,
+            default_artifact_id=artifact_id,
+            citations=citations_sink,
+            allow_generate_query=True,
+            mock_schema={"note": "mock repl"},
+            mock_generate="EVALUATE ROW(\"x\", 1)",
+        )
+    else:
+        pbi_client = _criar_cliente_rest_ou_none(settings)
+        if pbi_client is None:
+            raise PowerBIQueryError(
+                "CHAT_PBI_TRANSPORT=rest exige PBI_ACCESS_TOKEN."
+            )
+        tools = _build_local_tools(
+            client=pbi_client,
+            default_artifact_id=artifact_id,
+            citations=citations_sink,
+            allow_generate_query=False,
+        )
+
+    print(
+        "Chat PBI sequencial (ADR-0026 D7). "
+        "Historico em RAM ate 'sair'. Modelo:",
+        model_chat,
+    )
+    print(f"sessao={chat_session.sessao_id} transport={transport}")
+    print("Digite 'sair' para encerrar.\n")
+
+    try:
+        async with Agent(
+            client=client,
+            name="ChatPBI",
+            instructions=instructions,
+            tools=tools,
+        ) as agent:
+            while True:
+                try:
+                    pergunta = await asyncio.to_thread(
+                        input,
+                        "> ",
+                    )
+                    pergunta = pergunta.strip()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    break
+                if not pergunta:
+                    continue
+                if pergunta.lower() in {"sair", "exit", "quit"}:
+                    break
+
+                chat_session.turno += 1
+                turno = chat_session.turno
+                trail = chat_session.audit
+                guard = verificar_input(pergunta)
+                trail.registrar(
+                    "chat_input_guardrail",
+                    {
+                        "ok": guard.ok,
+                        "detalhe": guard.detalhe,
+                        "turno": turno,
+                    },
+                    iteracao=turno,
+                )
+                if not guard.ok:
+                    print(f"BLOQUEADO: {guard.detalhe}\n")
+                    continue
+
+                citations: List[Dict[str, Any]] = []
+                trail.registrar(
+                    "chat_inicio",
+                    {
+                        "pergunta": _truncar(pergunta, 300),
+                        "transport": transport,
+                        "artifact_id": artifact_id,
+                        "turno": turno,
+                        "n_mensagens_historico": len(chat_session.messages),
+                    },
+                    iteracao=turno,
+                )
+                try:
+                    history = list(chat_session.messages)
+                    fn_kwargs = (
+                        {"pbi_access_token": token}
+                        if transport == "mcp"
+                        else None
+                    )
+                    answer = await _agent_run_turno(
+                        agent,
+                        pergunta=pergunta,
+                        history=history,
+                        maf_session=maf_session,
+                        function_invocation_kwargs=fn_kwargs,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    trail.registrar(
+                        "chat_erro",
+                        {
+                            "tipo": type(exc).__name__,
+                            "mensagem": _truncar(str(exc), 400),
+                            "turno": turno,
+                        },
+                        iteracao=turno,
+                    )
+                    _salvar_auditoria_chat(trail)
+                    print(f"BLOQUEADO: Falha no chat PBI: {exc}\n")
+                    continue
+
+                chat_session.messages.append(
+                    {"role": "user", "content": pergunta}
+                )
+                chat_session.messages.append(
+                    {"role": "assistant", "content": answer}
+                )
+                trail.registrar(
+                    "chat_fim",
+                    {
+                        "n_citations": len(citations),
+                        "resposta_chars": len(answer),
+                        "turno": turno,
+                    },
+                    iteracao=turno,
+                )
+                audit_path = str(_salvar_auditoria_chat(trail))
+                resultado = ChatResult(
+                    answer_markdown=answer,
+                    citations=citations,
+                    meta={
+                        "sessao_id": chat_session.sessao_id,
+                        "transport": transport,
+                        "artifact_id": artifact_id,
+                        "auditoria_path": audit_path,
+                        "openai_model": model_chat,
+                        "turno": turno,
+                        "multi_turno": True,
+                    },
+                )
+                print(formatar_saida_cli(resultado, pergunta))
+                print()
+    finally:
+        if http_client is not None:
+            await http_client.aclose()
+
+
+def _repl_mock_loop(
+    *,
+    settings: Settings,
+    artifact_id: str,
+    chat_session: ChatSession,
+) -> None:
+    """
+    REPL offline (transport=mock) com historico, sem Agent MAF live.
+    """
+    print(
+        "Chat PBI sequencial (mock). Historico em RAM ate 'sair'. "
+        f"sessao={chat_session.sessao_id}"
+    )
+    print("Digite 'sair' para encerrar.\n")
     while True:
         try:
             pergunta = input("> ").strip()
@@ -808,11 +1188,57 @@ def run_repl(
         resultado = run(
             pergunta,
             settings=settings,
-            transport=transport,
+            transport="mock",
             artifact_id=artifact_id,
+            chat_session=chat_session,
         )
         print(formatar_saida_cli(resultado, pergunta))
         print()
+
+
+def run_repl(
+    *,
+    settings: Settings,
+    transport: Optional[str] = None,
+    artifact_id: Optional[str] = None,
+) -> None:
+    """
+    Loop interativo com historico em RAM (estilo Cursor/ChatGPT).
+    """
+    transport_resolvido = resolver_transport(
+        transport or settings.chat_pbi_transport
+    )
+    aid = (
+        artifact_id
+        or (settings.pbi_artifact_id or "")
+        or os.getenv("PBI_ARTIFACT_ID", "")
+    ).strip()
+    if not aid:
+        raise SystemExit("Erro: PBI_ARTIFACT_ID nao configurado.")
+
+    chat_session = criar_chat_session()
+    try:
+        if transport_resolvido == "mock":
+            _repl_mock_loop(
+                settings=settings,
+                artifact_id=aid,
+                chat_session=chat_session,
+            )
+        else:
+            asyncio.run(
+                _repl_loop_async(
+                    settings=settings,
+                    transport=transport_resolvido,
+                    artifact_id=aid,
+                    chat_session=chat_session,
+                )
+            )
+    except PowerBIQueryError as exc:
+        raise SystemExit(f"Erro chat PBI: {exc}") from exc
+    print(
+        f"Sessao {chat_session.sessao_id} encerrada "
+        f"({chat_session.turno} turno(s)). Historico descartado."
+    )
 
 
 def chat_result_to_dict(resultado: ChatResult) -> Dict[str, Any]:

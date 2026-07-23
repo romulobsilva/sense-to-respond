@@ -17,6 +17,7 @@ from chat_pbi import (
     ChatResult,
     carregar_hints_catalogo,
     chat_result_to_dict,
+    criar_chat_session,
     formatar_saida_cli,
     montar_instrucoes_agente,
     resolver_transport,
@@ -129,6 +130,55 @@ def test_agent_runner_injecao() -> None:
     assert resultado.bloqueado is False
     assert "DOI" in resultado.answer_markdown
     assert resultado.meta.get("transport") == "rest"
+
+
+def test_chat_session_multi_turno_historico() -> None:
+    """Follow-up reutiliza mesma sessao e recebe historico."""
+    sessao = criar_chat_session()
+    visto: list[object] = []
+
+    def runner(pergunta: str, historico: object = None) -> str:
+        visto.append({"pergunta": pergunta, "n_hist": len(historico or [])})
+        if "proxima" in pergunta.lower() or "camada" in pergunta.lower():
+            return (
+                "### Follow-up\n\nConcentracao understock: Brazil Cheese "
+                "(Philadelphia) e Mexico Chocolates (Toblerone)."
+            )
+        return (
+            "## Estoque\n\n| Metrica | Valor |\n|---|---|\n"
+            "| DOI Actual | 28.8 |\n| Understock | 2 |\n\n"
+            "Parcial: ha SKUs sob pressao."
+        )
+
+    r1 = run(
+        "Temos estoque suficiente no curto prazo hoje?",
+        settings=_settings_minimo(),
+        transport="mock",
+        agent_runner=runner,
+        chat_session=sessao,
+        persistir_auditoria=False,
+    )
+    assert r1.bloqueado is False
+    assert r1.meta.get("turno") == 1
+    assert r1.meta.get("multi_turno") is True
+    assert r1.meta.get("sessao_id") == sessao.sessao_id
+    assert len(sessao.messages) == 2
+
+    r2 = run(
+        "Abre a proxima camada por pais e categoria",
+        settings=_settings_minimo(),
+        transport="mock",
+        agent_runner=runner,
+        chat_session=sessao,
+        persistir_auditoria=False,
+    )
+    assert r2.bloqueado is False
+    assert r2.meta.get("turno") == 2
+    assert r2.meta.get("sessao_id") == sessao.sessao_id
+    assert "Philadelphia" in r2.answer_markdown or "Follow-up" in r2.answer_markdown
+    assert len(sessao.messages) == 4
+    assert visto[0]["n_hist"] == 0
+    assert visto[1]["n_hist"] == 2
 
 
 def test_chat_result_to_dict() -> None:

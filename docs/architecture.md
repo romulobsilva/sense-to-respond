@@ -137,10 +137,10 @@ Modo paralelo (nao substitui 3.2). Modulo: `chat_pbi.py`.
 
 CLI:
 
-* one-shot: `--pergunta "..."`;
-* REPL: `python main.py --modo chat` (loop no terminal; **MVP sem
-  historico multi-turno** -- cada `>` e turno isolado; backlog:
-  `AgentSession` em RAM).
+* one-shot: `--pergunta "..."` (sem memoria);
+* REPL: `python main.py --modo chat` -- conversa sequencial em RAM
+  (`ChatSession` + historico user/assistant + AgentSession MAF),
+  estilo Cursor/ChatGPT, ate `sair`.
 
 Nucleo UI-agnostic (React = fase 2+). Transport:
 `CHAT_PBI_TRANSPORT=mcp|rest|mock` (MCP preferido; REST = ExecuteQuery
@@ -343,7 +343,7 @@ Nenhuma mudanca de codigo necessaria para novo cliente FMCG.
 | Tools parametrizadas Mondelez | Implementado (CSV) | Fase 1.5b | ADR-0019 |
 | Dual ingress PBI/MCP (catalogo DAX) | Implementado (1.7a.2--1.7a.4) | Fase 1.7a | ADR-0025 |
 | Catalogo DAX Mondelez (PBI publicado) | Implementado (`mondelez_s2r_v1`) | 1.7a.2+ | ADR-0025 |
-| Chat PBI analitico (MAF + MCP) | MVP CLI + smoke live OK; REPL sem memoria | Fase 1.7b | ADR-0026 |
+| Chat PBI analitico (MAF + MCP) | MVP CLI + smoke + REPL multi-turno RAM | Fase 1.7b | ADR-0026 |
 | Sandbox para ETL gerado | Planejado | Fase 1.5 N2 | ADR-0021 |
 | Dominion expandido (DOI, canal) | Parcial / evolutivo | Fase 1.6 | - |
 | Kedro pipelines | Planejado | Fase 2 | - |

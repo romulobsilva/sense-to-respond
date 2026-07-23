@@ -18,7 +18,7 @@ Before code changes, read:
 - Python/pandas tools calculate all metrics and financial values.
 - On the PBI batch path (ADR-0025), metrics come from catalog DAX via ExecuteQuery (fixture or REST); do not use GenerateQuery in the batch report path; do not reimplement PBI measures in Python as the default fallback.
 - Dual ingress: spreadsheet = DataShield; unified PBI = Dominion PBI + DAX catalog (`--fonte pbi`). See planning 1.7a.2--1.7a.4.
-- Chat mode (1.7b / ADR-0026, Microsoft Agent Framework + MCP) is parallel to batch; do not mix GenerateQuery into the S&OE PDF path; prefer ExecuteQuery with hand-written DAX (GenerateQuery is fallback); chat core returns ChatResult (UI-agnostic); default chat model is CHAT_OPENAI_MODEL=gpt-5.4.
+- Chat mode (1.7b / ADR-0026, Microsoft Agent Framework + MCP) is parallel to batch; do not mix GenerateQuery into the S&OE PDF path; prefer ExecuteQuery with hand-written DAX (GenerateQuery is fallback); chat core returns ChatResult (UI-agnostic); default chat model is CHAT_OPENAI_MODEL=gpt-5.4; REPL keeps ChatSession history in RAM until exit (one-shot has no memory).
 - MVP batch uses sequential pipeline and state blackboard.
 - No free natural-language conversation between agents in the batch MVP.
 - No MOE router, consensus, or Bridge execution unless spec is updated first.

@@ -236,7 +236,8 @@ so nesse modo (fallback; preferir ExecuteQuery com DAX). Nucleo
 `chat_pbi.run` -> `ChatResult` (UI-agnostic); CLI imprime Markdown
 estruturado (agregado + SKUs em perguntas de cobertura/risco).
 Modelo do chat: `CHAT_OPENAI_MODEL` (default `gpt-5.4`); batch fica em
-`OPENAI_MODEL`. REPL existe sem historico multi-turno (backlog).
+`OPENAI_MODEL`. REPL (`--modo chat` sem `--pergunta`) mantem historico
+em RAM ate `sair` (ADR-0026 D7); one-shot nao guarda contexto.
 Nao misturar chat com Optimus/PDF.
 
 Nao implementar no MVP sem atualizacao previa da spec:

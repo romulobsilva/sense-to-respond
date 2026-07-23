@@ -585,8 +585,9 @@ Ref: ADR-0026, `docs/architecture.md` §3.3.
 - [x] Testes mock CI (`tests/test_chat_pbi.py`)
 - [x] Smoke live MCP: estoque curto prazo (DOI/SKU; model=gpt-5.4)
 - [x] Docs architecture/rules/contracts/testing: fronteira chat vs batch
-- [ ] REPL com historico multi-turno (`AgentSession` em RAM)
+- [x] REPL com historico multi-turno (`ChatSession` / AgentSession em RAM)
 - [ ] UI React sobre `ChatResult` (fase 2+)
+- [ ] Persistir/retomar conversa em disco
 
 ### Backlog pos-PoC PBI (apos 1.7a.2)
 

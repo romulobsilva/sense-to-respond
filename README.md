@@ -55,7 +55,7 @@ Chat analitico Power BI (ADR-0026; paralelo ao batch; nao gera PDF):
 # one-shot (requer PBI_ACCESS_TOKEN + PBI_ARTIFACT_ID; modelo default gpt-5.4)
 python main.py --modo chat --pergunta "Tem estoque suficiente no curto prazo?"
 
-# REPL no terminal (cada turno ainda e isolado; historico = backlog)
+# REPL sequencial (historico em RAM ate "sair"; estilo Cursor/ChatGPT)
 python main.py --modo chat
 ```
 

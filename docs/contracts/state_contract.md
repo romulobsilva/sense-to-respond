@@ -121,21 +121,30 @@ ChatResult:
   answer_markdown: str
   tables: list[dict]
   citations: list[dict]
-  meta: {sessao_id, transport, artifact_id, tools_usadas, ...}
+  meta: {sessao_id, transport, artifact_id, tools_usadas,
+         openai_model, turno, multi_turno}
   bloqueado: bool
   motivo: str
+
+ChatSession (RAM; REPL):
+  sessao_id: str
+  turno: int
+  messages: list[{role: user|assistant, content: str}]
+  # AgentSession MAF associado enquanto o processo viver
 ```
+
+* One-shot (`--pergunta`): sem `ChatSession` (turno unico).
+* REPL (`--modo chat` sem pergunta): uma `ChatSession` por processo;
+  follow-ups usam `messages` + sessao MAF.
 
 Auditoria de chat (eventos `chat_*` em JSON proprio ou trilha dedicada):
 
 * Arquivos: `auditoria/chat_<sessao_id>.json`, `auditoria/chat_ultima.json`
-* Registrar: sessao_id, pergunta (truncada), tools chamadas (nome),
-  transport, `openai_model` (meta), erros.
+* Registrar: sessao_id, turno, pergunta (truncada), tools (nome),
+  transport, `openai_model`, erros.
 * Nao registrar: token Bearer, dumps tabulares completos de MCP,
   system prompt completo.
-
-REPL atual: cada turno gera nova sessao (sem historico). Backlog:
-uma sessao com multiplos turns (`AgentSession`).
+* REPL: mesmo arquivo de sessao acumulando turns ate `sair`.
 
 ---
 

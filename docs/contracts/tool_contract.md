@@ -517,12 +517,15 @@ PoC 1.7a.2--1.7a.4: `powerbi_catalog.py`, `powerbi_mcp.py`,
 Somente `--modo chat`. Proibido no batch Optimus/PDF.
 
 ```text
-chat_pbi.run(pergunta, ...) -> ChatResult
+chat_pbi.run(pergunta, *, chat_session=None, ...) -> ChatResult
   orchestration_tool (MAF)
-  Entrada: pergunta NL (+ sessao opcional)
+  Entrada: pergunta NL; chat_session opcional (REPL multi-turno)
   Saida: answer_markdown, tables[], citations[], meta
   Numeros so via tools abaixo; CLI so imprime.
   Modelo: CHAT_OPENAI_MODEL (default gpt-5.4)
+
+chat_pbi.run_repl / ChatSession
+  Mantem Agent + historico em RAM ate "sair" (estilo Cursor/ChatGPT).
 
 GetSemanticModelSchema(artifactId) -> schema/meta
   io_tool (MCP primario)
@@ -541,17 +544,16 @@ Transport (`CHAT_PBI_TRANSPORT`):
 * `rest` (fallback): ExecuteQuery via REST; GenerateQuery indisponivel
 * `mock` (CI): fixtures/tools injetadas; sem OAuth
 
-Playbook/completude: ver ADR-0026 D6 (agregado + 5-10 SKUs em
-perguntas de cobertura/risco).
+Playbook/completude: ADR-0026 D6. Multi-turno: ADR-0026 D7.
 
 Backlog restante:
 
 ```text
-REPL multi-turno (AgentSession)
 connector HTTP Fabric standalone (cron)
 alinhar tipos sinal Agua <-> Mondelez
 paridade temporal total (forward_marker) no modelo PBI
 UI React sobre ChatResult
+persistir/retomar conversa em disco
 ```
 
 Se entrada for invalida, a tool deve:

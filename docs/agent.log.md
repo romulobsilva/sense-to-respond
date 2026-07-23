@@ -6,6 +6,29 @@
 
 ---
 
+## Sessao 28 - 2026-07-22 - REPL multi-turno (ChatSession em RAM)
+
+### Contexto
+- Usuario quer conversar no terminal como Cursor/ChatGPT (follow-ups)
+
+### Decisoes
+- Amend ADR-0026 D7: `ChatSession` + historico em RAM; one-shot isolado
+- REPL mantem Agent MAF vivo (mcp/rest); mock usa loop com `run()`
+- Sem persistir conversa em disco neste MVP
+
+### Artefatos
+| Arquivo | Mudanca |
+|---|---|
+| `chat_pbi.py` | ChatSession, run(chat_session=), run_repl conversacional |
+| ADR-0026, contracts, architecture, planning, testing, rules | D7 |
+| `tests/test_chat_pbi.py` | multi-turno com historico |
+
+### Proximos passos
+- UI React sobre ChatResult
+- Opcional: persistir/retomar conversa
+
+---
+
 ## Sessao 27 - 2026-07-22 - Chat PBI hardening + sync docs pos-smoke
 
 ### Contexto
@@ -26,7 +49,7 @@
 | agent.log, LaTeX (nota) | sessao 27 |
 
 ### Proximos passos
-- REPL com `AgentSession` (contexto multi-turno)
+- (feito na sessao 28) REPL multi-turno
 - UI React sobre `ChatResult`
 
 ---
